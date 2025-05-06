@@ -18,6 +18,7 @@ PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新
 
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽"],
+    "台新金控": ["台新金", "台新人壽"],
     "保險": ["保險", "壽險", "健康險", "意外險"],
     "金控": ["金控", "金融控股"],
     "其他": []
@@ -100,7 +101,7 @@ def fetch_news():
                 classified_news[category].append(formatted)
 
     news_text = f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
-    for cat in ["新光金控", "保險", "金控", "其他"]:
+    for cat in ["新光金控", "台新金控", "保險", "金控", "其他"]:
         if classified_news[cat]:
             news_text += f"📂【{cat}】({len(classified_news[cat])}則)\n"
             for idx, item in enumerate(classified_news[cat], 1):
