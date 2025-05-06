@@ -42,45 +42,55 @@ def classify_news(title):
             return category
     return "其他"
 
-# 主新聞抓取邏輯
+# 新聞抓取邏輯，支持多個 RSS 源
 def fetch_news():
-    url = "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-    res = requests.get(url)
-    print(f"✅ RSS 回應狀態：{res.status_code}")
-
-    # 分類儲存
+    rss_urls = [
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",  # Google News
+        "https://www.ettoday.net/news/rss",  # ETtoday
+        "https://www.chinatimes.com/rss",  # 中時新聞
+        "https://www.ltn.com.tw/rss",  # 自由時報
+        "https://www.setn.com/RSS.aspx",  # 三立新聞
+        "https://www.cna.com.tw/rss",  # 中央社
+        "https://www.udn.com/rssfeed/news/2",  # 經濟日報
+    ]
+    
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
 
-    if res.status_code == 200:
-        root = ET.fromstring(res.content)
-        items = root.findall(".//item")
-        print(f"✅ 抓到 {len(items)} 筆新聞")
+    # 循環抓取每個 RSS
+    for rss_url in rss_urls:
+        res = requests.get(rss_url)
+        print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
 
-        for item in items:
-            title = item.find('title').text
-            link = item.find('link').text
-            pubDate_str = item.find('pubDate').text
-            source_elem = item.find('source')
-            source_name = source_elem.text if source_elem is not None else "未標示"
+        if res.status_code == 200:
+            root = ET.fromstring(res.content)
+            items = root.findall(".//item")
+            print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
-            # 轉為台灣時間
-            pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
-            pub_date = pub_datetime.date()
+            for item in items:
+                title = item.find('title').text
+                link = item.find('link').text
+                pubDate_str = item.find('pubDate').text
+                source_elem = item.find('source')
+                source_name = source_elem.text if source_elem is not None else "未標示"
 
-            print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
+                # 轉為台灣時間
+                pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
+                pub_date = pub_datetime.date()
 
-            if pub_date != today:
-                continue
+                print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
 
-            # 篩選來源或標題
-            if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
-                continue
+                if pub_date != today:
+                    continue
 
-            short_link = shorten_url(link)
-            category = classify_news(title)
+                # 篩選來源或標題
+                if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
+                    continue
 
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
-            classified_news[category].append(formatted)
+                short_link = shorten_url(link)
+                category = classify_news(title)
+
+                formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+                classified_news[category].append(formatted)
 
     # 整理輸出內容
     news_text = ""
@@ -118,3 +128,4 @@ if __name__ == "__main__":
         broadcast_message("【新光金控 今日新聞】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
