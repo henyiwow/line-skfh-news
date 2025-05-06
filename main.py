@@ -107,12 +107,18 @@ def fetch_news():
         except Exception as e:
             print(f"⚠️ 無法從 {rss_url} 抓取新聞：{e}")
 
+    # 去除重複的連結，並格式化新聞內容
     news_text = f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
     for cat in ["新光金控", "台新金控","保險", "金控", "其他"]:
         if classified_news[cat]:
             news_text += f"📂【{cat}】\n"
+            seen_links = set()  # 儲存已經顯示過的連結
             for idx, item in enumerate(classified_news[cat], 1):
-                news_text += f"{idx}. {item}\n\n"
+                # 提取短連結並檢查是否已經顯示過
+                link = item.split("🔗 ")[-1].strip()
+                if link not in seen_links:
+                    news_text += f"{idx}. {item}\n\n"
+                    seen_links.add(link)
 
     news_text += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
     print("✅ 今日新聞內容：\n", news_text)
