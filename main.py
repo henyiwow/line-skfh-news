@@ -65,11 +65,22 @@ def fetch_news():
             print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
             for item in items:
-                title = item.find('title').text
-                link = item.find('link').text
-                pubDate_str = item.find('pubDate').text
+                title_elem = item.find('title')
+                link_elem = item.find('link')
+                pubDate_elem = item.find('pubDate')
+
+                if title_elem is None or link_elem is None or pubDate_elem is None:
+                    continue
+
+                title = title_elem.text.strip()
+                link = link_elem.text.strip()
+                pubDate_str = pubDate_elem.text.strip()
+
+                if not title or title.startswith("Google ニュース"):
+                    continue
+
                 source_elem = item.find('source')
-                source_name = source_elem.text if source_elem is not None else "未標示"
+                source_name = source_elem.text.strip() if source_elem is not None else "未標示"
 
                 pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
                 pub_date = pub_datetime.date()
@@ -147,5 +158,4 @@ if __name__ == "__main__":
         broadcast_message("【業企部 今日重點新聞整理】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
 
