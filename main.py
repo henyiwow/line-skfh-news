@@ -7,7 +7,10 @@ import email.utils
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
+# 關鍵字，可自訂其他來源關鍵字
 PREFERRED_SOURCES = ['工商時報', '中國時報']
+
+# 台灣時間
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
@@ -29,18 +32,20 @@ def fetch_news():
             link = item.find('link').text
             pubDate_str = item.find('pubDate').text
             source_elem = item.find('source')
-            source_name = source_elem.text if source_elem is not None else "未知來源"
+            source_name = source_elem.text if source_elem is not None else "未標示"
 
+            # 轉為台灣時間
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
             pub_date = pub_datetime.date()
 
-            # Debug 輸出
+            # Debug
             print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
 
             if pub_date != today:
                 continue
 
-            if PREFERRED_SOURCES and not any(src in source_name for src in PREFERRED_SOURCES):
+            # 方法三：來源或標題含關鍵字
+            if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
                 continue
 
             news_list.append(f"📰 {title}\n📌 來源：{source_name}\n🔗 {link}")
