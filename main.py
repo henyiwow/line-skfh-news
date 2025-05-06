@@ -24,7 +24,7 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '司法保險', '必要保險']
 
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
@@ -133,5 +133,3 @@ if __name__ == "__main__":
         broadcast_message("【業企部 今日重點新聞整理】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
-
