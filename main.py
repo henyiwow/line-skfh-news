@@ -24,7 +24,7 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '司法保險', '必要保險']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
 
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
