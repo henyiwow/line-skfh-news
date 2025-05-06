@@ -23,6 +23,8 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
+
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
@@ -77,6 +79,11 @@ def fetch_news():
                 if pub_date != today:
                     continue
 
+                # 排除敏感關鍵字
+                if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
+                    print(f"⛔ 排除：{title[:20]}... 含有排除關鍵字")
+                    continue
+
                 if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
                     continue
 
@@ -125,4 +132,5 @@ if __name__ == "__main__":
         broadcast_message("【業企部 今日重點新聞整理】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
