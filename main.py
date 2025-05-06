@@ -115,7 +115,7 @@ def fetch_news():
             seen_links = set()  # 儲存已經顯示過的連結
             for idx, item in enumerate(classified_news[cat], 1):
                 # 提取短連結並檢查是否已經顯示過
-                link = item.split("🔗 ")[-1].strip()
+                link = item.split("🔗 ")[-1].strip()  # 提取短連結
                 if link not in seen_links:
                     news_text += f"{idx}. {item}\n\n"
                     seen_links.add(link)
@@ -152,4 +152,5 @@ if __name__ == "__main__":
         broadcast_message("【業企部 今日重點新聞整理】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
