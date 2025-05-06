@@ -98,11 +98,10 @@ def fetch_news():
     news_text = news_text.strip()
     news_text += "\n\n🔚 以上新聞由 LINE Bot 整理，僅供參考。"
 
-    # 保留短網址，清除任何非短網址的多餘 URL
-    # 確保只留下縮短過的網址
+    # 確保保留短網址
     cleaned_news_text = ''
     for line in news_text.split('\n'):
-        # 保留含有短網址的行
+        # 只保留包含短網址的行
         if 'http://tinyurl.com/' in line:
             cleaned_news_text += line + "\n"
         else:
@@ -110,6 +109,7 @@ def fetch_news():
             if line and not line.startswith("🔗"):
                 cleaned_news_text += line + "\n"
     
+    # 顯示訊息內容
     print("✅ 今日新聞內容：\n", cleaned_news_text.strip())
     return cleaned_news_text.strip()
 
@@ -140,5 +140,6 @@ if __name__ == "__main__":
         broadcast_message(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
