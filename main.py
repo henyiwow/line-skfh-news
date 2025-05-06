@@ -18,19 +18,16 @@ PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新
 
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽"],
-    "台新金控": ["台新金", "台新人壽"],
     "保險": ["保險", "壽險", "健康險", "意外險"],
     "金控": ["金控", "金融控股"],
     "其他": []
 }
 
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '司法保險', '必要保險']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
 
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
-# 儲存已處理的連結，避免重複
-processed_links = set()
 
 def shorten_url(long_url):
     try:
@@ -59,70 +56,67 @@ def fetch_news():
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
 
     for rss_url in rss_urls:
-        try:
-            res = requests.get(rss_url)
-            print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
+        res = requests.get(rss_url)
+        print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
 
-            if res.status_code == 200:
-                root = ET.fromstring(res.content)
-                items = root.findall(".//item")
-                print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
+        if res.status_code == 200:
+            root = ET.fromstring(res.content)
+            items = root.findall(".//item")
+            print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
-                for item in items:
-                    title = item.find('title').text
-                    link = item.find('link').text
-                    pubDate_str = item.find('pubDate').text
-                    source_elem = item.find('source')
-                    source_name = source_elem.text if source_elem is not None else "未標示"
+            for item in items:
+                title = item.find('title').text
+                link = item.find('link').text
+                pubDate_str = item.find('pubDate').text
+                source_elem = item.find('source')
+                source_name = source_elem.text if source_elem is not None else "未標示"
 
-                    pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
-                    pub_date = pub_datetime.date()
+                pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
+                pub_date = pub_datetime.date()
 
-                    print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
+                print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
 
-                    if pub_date != today:
-                        continue
+                if pub_date != today:
+                    continue
 
-                    # 排除敏感關鍵字
-                    if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
-                        print(f"⛔ 排除：{title[:20]}... 含有排除關鍵字")
-                        continue
+                if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
+                    print(f"⛔ 排除：{title[:20]}... 含有排除關鍵字")
+                    continue
 
-                    if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
-                        continue
+                if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
+                    continue
 
-                    # 檢查是否已經處理過此連結
-                    if link in processed_links:
-                        print(f"⛔ 排除：{title[:20]}... 重複連結")
-                        continue
+                short_link = shorten_url(link)
+                category = classify_news(title)
 
-                    short_link = shorten_url(link)
-                    processed_links.add(link)  # 標記此連結已處理
+                formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+                classified_news[category].append(formatted)
 
-                    category = classify_news(title)
-
-                    formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
-                    classified_news[category].append(formatted)
-
-        except Exception as e:
-            print(f"⚠️ 無法從 {rss_url} 抓取新聞：{e}")
-
-    # 去除重複的連結，並格式化新聞內容
     news_text = f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
-    for cat in ["新光金控", "台新金控","保險", "金控", "其他"]:
+    for cat in ["新光金控", "保險", "金控", "其他"]:
         if classified_news[cat]:
-            news_text += f"📂【{cat}】\n"
-            seen_links = set()  # 儲存已經顯示過的連結
+            news_text += f"📂【{cat}】({len(classified_news[cat])}則)\n"
             for idx, item in enumerate(classified_news[cat], 1):
-                # 提取短連結並檢查是否已經顯示過
-                link = item.split("🔗 ")[-1].strip()  # 提取短連結
-                if link not in seen_links:
-                    news_text += f"{idx}. {item}\n\n"
-                    seen_links.add(link)
+                news_text += f"{idx}. {item}\n\n"
 
     news_text += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
     print("✅ 今日新聞內容：\n", news_text)
     return news_text.strip()
+
+
+def split_message(message, max_length=1900):
+    lines = message.split('\n')
+    chunks = []
+    current = ""
+    for line in lines:
+        if len(current) + len(line) + 1 > max_length:
+            chunks.append(current)
+            current = line
+        else:
+            current += '\n' + line if current else line
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def broadcast_message(message):
@@ -131,19 +125,20 @@ def broadcast_message(message):
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {ACCESS_TOKEN}'
     }
-    data = {
-        "messages": [{
-            "type": "text",
-            "text": message
-        }]
-    }
 
-    print("✅ 即將發送的資料：")
-    print(data)
+    chunks = split_message(message)
+    for idx, chunk in enumerate(chunks):
+        data = {
+            "messages": [{
+                "type": "text",
+                "text": chunk
+            }]
+        }
 
-    res = requests.post(url, headers=headers, json=data)
-    print(f"📤 LINE 回傳狀態碼：{res.status_code}")
-    print("📤 LINE 回傳內容：", res.text)
+        print(f"📤 發送第 {idx + 1} 段：{len(chunk)} 字元")
+        res = requests.post(url, headers=headers, json=data)
+        print(f"📤 LINE 回傳狀態碼：{res.status_code}")
+        print("📤 LINE 回傳內容：", res.text)
 
 
 if __name__ == "__main__":
