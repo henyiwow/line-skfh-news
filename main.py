@@ -48,7 +48,7 @@ def fetch_news():
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",  # Google News
         "https://www.ettoday.net/news/rss",  # ETtoday
         "https://www.chinatimes.com/rss",  # 中時新聞
-        # "https://www.ltn.com.tw/rss",  # 自由時報
+        "https://news.ltn.com.tw/rss",  # 自由時報
         "https://www.setn.com/RSS.aspx",  # 三立新聞
         "https://www.cna.com.tw/rss",  # 中央社
         "https://www.udn.com/rssfeed/news/2",  # 經濟日報
