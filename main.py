@@ -51,7 +51,7 @@ def fetch_news():
         # "https://www.ltn.com.tw/rss",  # 自由時報
         "https://www.setn.com/RSS.aspx",  # 三立新聞
         "https://www.cna.com.tw/rss",  # 中央社
-        # "https://www.udn.com/rssfeed/news/2",  # 經濟日報
+        "https://www.udn.com/rssfeed/news/2",  # 經濟日報
     ]
     
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
@@ -125,7 +125,7 @@ def broadcast_message(message):
 if __name__ == "__main__":
     news = fetch_news()
     if news:
-        broadcast_message("【新光金控 今日新聞】\n\n" + news)
+        broadcast_message("【業務企劃部 今日新光保險新聞】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
 
