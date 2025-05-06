@@ -9,7 +9,14 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 # 關鍵字可自訂
-PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網', '中時新聞網', '中國時報', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網', '鏡周刊網',  '自由財經網', '中華日報', '台灣新生報', '旺報', '中國時報', '三立新聞網']
+PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網', 
+                     '中時新聞網', '中國時報', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', 
+                     '聯合新聞網', '鏡周刊網',  '自由財經', '中華日報', '台灣新生報', 
+                     '旺報', '中國時報', '三立新聞網',  '天下雜誌', '奇摩新聞'
+                     '《現代保險》雜誌', 'MoneyDJ', '遠見雜誌', '自由時報', 'Ettoday財經雲'
+                     '鏡週刊Mirror Media', 'chinatimes.com', 'MSN' , '奇摩股市', 'news.cnyes.com'
+                     '中央社', '民視新聞網', '風傳媒', 'CMoney', '大紀元'
+                     ]
 
 # 分類關鍵字
 CATEGORY_KEYWORDS = {
@@ -46,12 +53,6 @@ def classify_news(title):
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",  # Google News
-        "https://news.ltn.com.tw/rss/business.xml",  # 自由時報
-        "https://www.udn.com/rssfeed/news/2",  # 經濟日報
-        "https://money.udn.com/rssfeed/news/1001/5589874",  # 聯合財經網
-        "https://www.chinatimes.com/rss/realtimenews",  # 中時新聞
-        "https://www.setn.com/RSS.aspx",  # 三立新聞
-        "https://www.cna.com.tw/rss",  # 中央社
     ]
     
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
