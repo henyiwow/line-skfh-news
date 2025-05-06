@@ -1,11 +1,12 @@
 import requests
 import os
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+import email.utils
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
-# 可自訂來源清單
 PREFERRED_SOURCES = ['工商時報', '中國時報']
 
 def fetch_news():
@@ -14,28 +15,33 @@ def fetch_news():
     print(f"✅ RSS 回應狀態：{res.status_code}")
 
     news_list = []
+    today = datetime.utcnow().date()  # 使用 UTC 時間（Google RSS 通常是 GMT）
+
     if res.status_code == 200:
         root = ET.fromstring(res.content)
         items = root.findall(".//item")
 
         print(f"✅ 抓到 {len(items)} 筆新聞")
-        count = 0
-
         for item in items:
             title = item.find('title').text
             link = item.find('link').text
-            source = item.find('source')
-            source_name = source.text if source is not None else "未知來源"
+            pubDate_str = item.find('pubDate').text
+            source_elem = item.find('source')
+            source_name = source_elem.text if source_elem is not None else "未知來源"
 
-            # 若有指定來源清單，優先挑選
-            if PREFERRED_SOURCES:
-                if not any(src in source_name for src in PREFERRED_SOURCES):
-                    continue
+            # 轉換 pubDate 格式為 datetime 物件
+            pub_datetime = email.utils.parsedate_to_datetime(pubDate_str)
+            pub_date = pub_datetime.date()
+
+            # 只留今天的新聞
+            if pub_date != today:
+                continue
+
+            # 如果有指定來源過濾
+            if PREFERRED_SOURCES and not any(src in source_name for src in PREFERRED_SOURCES):
+                continue
 
             news_list.append(f"📰 {title}\n📌 來源：{source_name}\n🔗 {link}")
-            count += 1
-            if count >= 10:  # 最多顯示 10 則，可自調
-                break
 
     news_text = "\n\n".join(news_list)
     print("✅ 今日新聞內容：\n", news_text)
@@ -64,6 +70,6 @@ def broadcast_message(message):
 if __name__ == "__main__":
     news = fetch_news()
     if news:
-        broadcast_message("【新光金控 最新新聞】\n\n" + news)
+        broadcast_message("【新光金控 今日新聞】\n\n" + news)
     else:
-        print("⚠️ 抓不到新聞，不發送。")
+        print("⚠️ 沒有符合條件的新聞，不發送。")
