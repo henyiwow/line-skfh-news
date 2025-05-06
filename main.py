@@ -26,7 +26,7 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
-EXCLUDED_TERMS = ["保險套", "保險套販售", "保險套價格"]
+EXCLUDED_TERMS = ["保險套", "保險套販售", "保險套價格", "司法保險費"]
 
 # 台灣時間
 TW_TZ = timezone(timedelta(hours=8))
