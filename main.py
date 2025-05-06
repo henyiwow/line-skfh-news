@@ -29,6 +29,8 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '司法保險'
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
+# 儲存已處理的連結，避免重複
+processed_links = set()
 
 def shorten_url(long_url):
     try:
@@ -57,42 +59,53 @@ def fetch_news():
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
 
     for rss_url in rss_urls:
-        res = requests.get(rss_url)
-        print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
+        try:
+            res = requests.get(rss_url)
+            print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
 
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            items = root.findall(".//item")
-            print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
+            if res.status_code == 200:
+                root = ET.fromstring(res.content)
+                items = root.findall(".//item")
+                print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
-            for item in items:
-                title = item.find('title').text
-                link = item.find('link').text
-                pubDate_str = item.find('pubDate').text
-                source_elem = item.find('source')
-                source_name = source_elem.text if source_elem is not None else "未標示"
+                for item in items:
+                    title = item.find('title').text
+                    link = item.find('link').text
+                    pubDate_str = item.find('pubDate').text
+                    source_elem = item.find('source')
+                    source_name = source_elem.text if source_elem is not None else "未標示"
 
-                pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
-                pub_date = pub_datetime.date()
+                    pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
+                    pub_date = pub_datetime.date()
 
-                print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
+                    print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
 
-                if pub_date != today:
-                    continue
+                    if pub_date != today:
+                        continue
 
-                # 排除敏感關鍵字
-                if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
-                    print(f"⛔ 排除：{title[:20]}... 含有排除關鍵字")
-                    continue
+                    # 排除敏感關鍵字
+                    if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
+                        print(f"⛔ 排除：{title[:20]}... 含有排除關鍵字")
+                        continue
 
-                if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
-                    continue
+                    if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
+                        continue
 
-                short_link = shorten_url(link)
-                category = classify_news(title)
+                    # 檢查是否已經處理過此連結
+                    if link in processed_links:
+                        print(f"⛔ 排除：{title[:20]}... 重複連結")
+                        continue
 
-                formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
-                classified_news[category].append(formatted)
+                    short_link = shorten_url(link)
+                    processed_links.add(link)  # 標記此連結已處理
+
+                    category = classify_news(title)
+
+                    formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+                    classified_news[category].append(formatted)
+
+        except Exception as e:
+            print(f"⚠️ 無法從 {rss_url} 抓取新聞：{e}")
 
     news_text = f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
     for cat in ["新光金控", "台新金控","保險", "金控", "其他"]:
