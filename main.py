@@ -3,6 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
+from urllib.parse import quote  # 為短網址處理用
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
@@ -13,6 +14,18 @@ PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新
 # 台灣時間
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
+
+# 短網址函式
+def shorten_url(long_url):
+    try:
+        encoded_url = quote(long_url, safe='')
+        api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
+        res = requests.get(api_url, timeout=5)
+        if res.status_code == 200:
+            return res.text
+    except Exception as e:
+        print("⚠️ 短網址失敗：", e)
+    return long_url
 
 def fetch_news():
     url = "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
@@ -38,17 +51,19 @@ def fetch_news():
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
             pub_date = pub_datetime.date()
 
-            # Debug
             print(f"🔍 檢查：{title[:20]}... 來源：{source_name} 發佈日：{pub_date}")
 
             if pub_date != today:
                 continue
 
-            # 方法三：來源或標題含關鍵字
-            if not any(keyword in source_name or keyword in title for keyword in PREFERRED_SOURCES):
+            # 篩選來源與標題
+            if not any(keyword.lower() in (source_name or "").lower() or keyword.lower() in title.lower() for keyword in PREFERRED_SOURCES):
                 continue
 
-            news_list.append(f"📰 {title}\n📌 來源：{source_name}\n🔗 {link}")
+            # 🔗 轉成短網址
+            short_link = shorten_url(link)
+
+            news_list.append(f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}")
 
     news_text = "\n\n".join(news_list)
     print("✅ 今日新聞內容：\n", news_text)
@@ -80,3 +95,4 @@ if __name__ == "__main__":
         broadcast_message("【新光金控 今日新聞】\n\n" + news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
