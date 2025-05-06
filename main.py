@@ -15,7 +15,7 @@ TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
 def fetch_news():
-    url = "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    url = "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+保險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
     res = requests.get(url)
     print(f"✅ RSS 回應狀態：{res.status_code}")
 
