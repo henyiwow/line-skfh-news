@@ -97,6 +97,10 @@ def fetch_news():
 
     news_text = news_text.strip()
     news_text += "\n\n🔚 以上新聞由 LINE Bot 整理，僅供參考。"
+
+    # 清除最下方多餘的 URL
+    news_text = news_text.replace('https://tinyurl.com/', '').strip()
+    
     print("✅ 今日新聞內容：\n", news_text)
     return news_text
 
@@ -125,6 +129,9 @@ if __name__ == "__main__":
     news = fetch_news()
     if news:
         broadcast_message(news)
+    else:
+        print("⚠️ 沒有符合條件的新聞，不發送。")
+
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
         
