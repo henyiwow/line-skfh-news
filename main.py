@@ -22,7 +22,7 @@ PREFERRED_SOURCES = [
 # 關鍵字分類
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽"],
-    "保險": ["壽險", "健康險", "意外險"],
+    "壽險": ["壽險", "健康險", "意外險"],
     "金控": ["金控", "金融控股"],
     "其他": []
 }
@@ -90,7 +90,7 @@ def fetch_news():
 
     # 組合訊息內容
     news_text = f"【業企部 今日重點新聞整理】({today.strftime('%Y/%m/%d')})\n來源：Google News RSS\n\n"
-    for cat in ["新光金控", "保險", "金控", "其他"]:
+    for cat in ["新光金控", "壽險", "金控", "其他"]:
         if classified_news[cat]:
             block = "\n\n".join(classified_news[cat]).strip()
             news_text += f"📂【{cat}】\n{block}\n\n"
