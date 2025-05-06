@@ -8,14 +8,14 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 # 關鍵字，可自訂其他來源關鍵字
-PREFERRED_SOURCES = ['工商時報', '中國時報']
+PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網', '中時新聞網', '中國時報', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網', '鏡周刊網', 'MSN', '自由財經網', '中華日報', '台灣新生報', '旺報', '中國時報', '三立新聞網']
 
 # 台灣時間
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
 def fetch_news():
-    url = "https://news.google.com/rss/search?q=新光金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    url = "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
     res = requests.get(url)
     print(f"✅ RSS 回應狀態：{res.status_code}")
 
