@@ -127,7 +127,4 @@ if __name__ == "__main__":
         broadcast_message(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
-    else:
-        print("⚠️ 沒有符合條件的新聞，不發送。")
-
+        
