@@ -1,28 +1,25 @@
 import requests
-from bs4 import BeautifulSoup
 import os
+import xml.etree.ElementTree as ET
 
-# 讀取 Access Token
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 def fetch_news():
-    url = "https://news.google.com/search?q=新光金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    res = requests.get(url, headers=headers)
-    print(f"✅ 抓取新聞 HTTP 狀態碼：{res.status_code}")
-
-    soup = BeautifulSoup(res.text, "html.parser")
-    articles = soup.select("article h3 a")
-    print(f"✅ 抓到 {len(articles)} 則新聞")
+    url = "https://news.google.com/rss/search?q=新光金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    res = requests.get(url)
+    print(f"✅ RSS 回應狀態：{res.status_code}")
 
     news_list = []
+    if res.status_code == 200:
+        root = ET.fromstring(res.content)
+        items = root.findall(".//item")
 
-    for article in articles[:5]:  # 最多取 5 則
-        title = article.text
-        href = article['href']
-        link = 'https://news.google.com' + href[1:] if href.startswith('.') else href
-        news_list.append(f"{title}\n{link}")
+        print(f"✅ 抓到 {len(items)} 筆新聞")
+        for item in items[:5]:  # 只取前 5 則
+            title = item.find('title').text
+            link = item.find('link').text
+            news_list.append(f"{title}\n{link}")
 
     news_text = "\n\n".join(news_list)
     print("✅ 今日新聞內容：\n", news_text)
