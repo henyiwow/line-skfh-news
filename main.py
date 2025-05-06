@@ -9,7 +9,7 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 # 關鍵字可自訂
-PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網', '中時新聞網', '中國時報', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網', '鏡周刊網', 'MSN', '自由財經網', '中華日報', '台灣新生報', '旺報', '中國時報', '三立新聞網']
+PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網', '中時新聞網', '中國時報', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網', '鏡周刊網',  '自由財經網', '中華日報', '台灣新生報', '旺報', '中國時報', '三立新聞網']
 
 # 分類關鍵字
 CATEGORY_KEYWORDS = {
@@ -50,7 +50,7 @@ def fetch_news():
         "https://www.chinatimes.com/rss",  # 中時新聞
         # "https://www.ltn.com.tw/rss",  # 自由時報
         "https://www.setn.com/RSS.aspx",  # 三立新聞
-        # "https://www.cna.com.tw/rss",  # 中央社
+        "https://www.cna.com.tw/rss",  # 中央社
         # "https://www.udn.com/rssfeed/news/2",  # 經濟日報
     ]
     
