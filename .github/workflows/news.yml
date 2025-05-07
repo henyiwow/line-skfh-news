@@ -2,7 +2,7 @@ name: Test Skfh News Push (每5分鐘測試用)
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # 每 5 分鐘一次（UTC 時區）
+    - cron: '*/1 * * * *'  # 每 1 分鐘一次（UTC 時區）
   workflow_dispatch:        # 可手動觸發
 
 jobs:
