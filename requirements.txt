@@ -1,0 +1,5 @@
+requests
+scikit-learn
+lxml
+beautifulsoup4
+如果你之後加入其他 N
