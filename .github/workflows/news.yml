@@ -1,11 +1,9 @@
-name: Test Skfh News Push (台灣時間 7:00～23:55 每 5 分鐘)
+name: Daily Skfh News Push (台灣時間下午2點執行)
 
 on:
   schedule:
-    - cron: '*/5 23-23 * * *'   # 台灣 07:00–07:55（UTC 23:00–23:55）
-    - cron: '*/5 0-7 * * *'     # 台灣 08:00–15:55（UTC 00:00–07:55）
-    - cron: '*/5 8-15 * * *'    # 台灣 16:00–23:55（UTC 08:00–15:55）
-  workflow_dispatch:
+    - cron: '0 6 * * *'  # 每天 UTC 06:00，也就是台灣時間 14:00 執行
+  workflow_dispatch:     # 允許手動觸發
 
 jobs:
   push-broadcast:
