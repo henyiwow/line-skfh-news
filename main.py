@@ -130,8 +130,8 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:  # 如果該類別有消息
-            # 將每個類別的訊息組成一條消息
-            category_message = f"📂【{category}】\n"
+            category_title = f"📂【{category}】 今日新聞整理\n"  # 顯示類別標題
+            category_message = category_title + "\n"
             category_message += "\n".join(messages)
 
             # 如果訊息長度超過 4000 字元，則分割成多條訊息
@@ -167,4 +167,5 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
