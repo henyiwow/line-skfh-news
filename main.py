@@ -62,10 +62,6 @@ def fetch_news():
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        # "https://udn.com/rssfeed/news/1/6?ch=news",
-        # "https://www.chinatimes.com/rss/cn_realtimenews.xml",
-        # "https://www.cna.com.tw/rss.aspx?Type=Finance",
-        # "https://www.ltn.com.tw/rss/business.xml"
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
@@ -126,9 +122,24 @@ def fetch_news():
 
     news_text += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
     print("✅ 今日新聞內容：\n", news_text)
-    return news_text.strip()
+    return classified_news
 
-# 發送訊息到 LINE
+# 根據類別分開發送訊息
+def send_message_by_category(news_by_category):
+    max_length = 4000
+
+    for category, messages in news_by_category.items():
+        if messages:  # 如果該類別有消息
+            # 將每個類別的訊息組成一條消息
+            category_message = f"📂【{category}】\n"
+            category_message += "\n".join(messages)
+
+            # 如果訊息長度超過 4000 字元，則分割成多條訊息
+            for i in range(0, len(category_message), max_length):
+                chunk = category_message[i:i + max_length]
+                broadcast_message(chunk)
+
+# 發送單條訊息到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
@@ -153,7 +164,7 @@ def broadcast_message(message):
 if __name__ == "__main__":
     news = fetch_news()
     if news:
-        broadcast_message(news)
+        send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
 
