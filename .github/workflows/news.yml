@@ -2,12 +2,13 @@ name: Daily Skfh News Push
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # 台灣時間早上 9 點（UTC+8）
+    - cron: '0 2 * * *'  # 台灣時間早上 10 點（UTC+8）
   workflow_dispatch:
 
 jobs:
   push-broadcast:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -18,7 +19,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: pip install requests beautifulsoup4 lxml
 
       - name: Run main.py
         run: python main.py
