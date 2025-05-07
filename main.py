@@ -137,4 +137,6 @@ if __name__ == "__main__":
     news_by_category = fetch_news()
     send_news_by_category(news_by_category)
 
+    send_news_by_category(news_by_category)
+
 
