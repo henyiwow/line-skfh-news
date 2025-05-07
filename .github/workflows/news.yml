@@ -1,9 +1,9 @@
-name: Daily Skfh News Push
+name: Test Skfh News Push (每5分鐘測試用)
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # 每天台灣時間 11:00（UTC+8）
-  workflow_dispatch:  # 可手動觸發
+    - cron: '*/5 * * * *'  # 每 5 分鐘一次（UTC 時區）
+  workflow_dispatch:        # 可手動觸發
 
 jobs:
   push-broadcast:
