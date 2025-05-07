@@ -35,15 +35,12 @@ vectorizer = TfidfVectorizer()
 category_texts = list(CATEGORY_DESCRIPTIONS.values())
 category_vectors = vectorizer.fit_transform(category_texts)
 
-
 def classify_news(title):
-    title_vec = vectorizer.transform([title])
-    sim_scores = cosine_similarity(title_vec, category_vectors).flatten()
-    best_idx = sim_scores.argmax()
-    if sim_scores[best_idx] > 0.2:
-        return list(CATEGORY_DESCRIPTIONS.keys())[best_idx]
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(kw in title for kw in keywords):
+            print(f"News title: {title} matched category: {category}")  # 這行可以幫助追蹤
+            return category
     return "其他"
-
 
 def shorten_url(long_url):
     try:
