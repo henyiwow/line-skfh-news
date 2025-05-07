@@ -58,6 +58,14 @@ def classify_news(title):
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://udn.com/rssfeed/news/1/6?ch=news",
+        "https://www.chinatimes.com/rss/cn_realtimenews.xml",
+        "https://www.cna.com.tw/rss.aspx?Type=Finance",
+        "https://www.ltn.com.tw/rss/business.xml"
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
