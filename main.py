@@ -65,7 +65,7 @@ def fetch_news():
         # "https://udn.com/rssfeed/news/1/6?ch=news",
         # "https://www.chinatimes.com/rss/cn_realtimenews.xml",
         # "https://www.cna.com.tw/rss.aspx?Type=Finance",
-        "https://www.ltn.com.tw/rss/business.xml"
+        # "https://www.ltn.com.tw/rss/business.xml"
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
