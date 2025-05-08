@@ -3,7 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
@@ -72,6 +72,7 @@ def fetch_news():
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
     seen_links = set()
+    seen_titles = set()
 
     for rss_url in rss_urls:
         try:
@@ -94,14 +95,18 @@ def fetch_news():
                 link = link_elem.text.strip()
                 pubDate_str = pubDate_elem.text.strip()
 
-                if not title or title.startswith("Google ニュース") or link in seen_links:
+                if not title or title.startswith("Google ニュース") or link in seen_links or title in seen_titles:
                     continue
 
                 seen_links.add(link)
+                seen_titles.add(title)
 
                 source_elem = item.find('source')
-                source_name = source_elem.text.strip() if source_elem is not None else "未標示"
+                source_name = source_elem.text.strip() if source_elem is not None and source_elem.text else "未標示"
                 normalized_source = SOURCE_ALIASES.get(source_name, source_name)
+
+                domain = urlparse(link).netloc.replace('www.', '')
+                normalized_source = SOURCE_ALIASES.get(domain, normalized_source)
 
                 pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
                 if pub_datetime.date() != today:
@@ -146,9 +151,13 @@ def send_news_by_category(classified_news):
         message += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
 
         print(f"📤 發送訊息總長：{len(message)} 字元")
+
         res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]})
         print(f"📤 類別 {cat} 發送狀態碼：{res.status_code}")
-        print("📤 LINE 回傳內容：", res.text)
+        try:
+            print("📤 LINE 回傳內容：", res.json())
+        except Exception:
+            print("📤 LINE 回傳非 JSON 格式：", res.text)
 
 if __name__ == "__main__":
     news_by_category = fetch_news()
@@ -158,5 +167,6 @@ if __name__ == "__main__":
         print("\n⚠️ 以下 RSS 抓取失敗：\n")
         for src in invalid_sources:
             print(src)
+
 
 
