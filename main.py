@@ -56,11 +56,8 @@ def shorten_url(long_url):
 
 def classify_news(text):
     text = text.lower()
-    print(f"分類檢查文本: {text[:50]}...")  # 日誌：檢查要分類的新聞文本（只顯示前 50 個字）
     for category, keywords in CATEGORY_KEYWORDS.items():
-        print(f"檢查類別 {category}，關鍵字 {keywords}")
         if any(kw.lower() in text for kw in keywords):
-            print(f"匹配到類別 {category}")
             return category
     return "其他"
 
@@ -125,6 +122,10 @@ def fetch_news():
                 description = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ''
                 combined_text = f"{title}\n{description}"
 
+                # 顯示抓到的標題與描述
+                print(f"抓到的標題：{title}")
+                print(f"抓到的描述：{description}")
+
                 short_link = shorten_url(link)
                 category = classify_news(combined_text)
                 formatted = f"📰 {title}\n📌 來源：{normalized_source}\n🔗 {short_link}"
@@ -134,7 +135,6 @@ def fetch_news():
             print(f"❌ RSS 來源錯誤：{rss_url} 原因：{e}")
             invalid_sources.append(f"{rss_url}\n錯誤原因：{e}\n")
 
-    print("✅ 已分類的新聞：", classified_news)  # 新增此行來檢查分類結果
     return classified_news
 
 def send_news_by_category(classified_news):
@@ -156,9 +156,12 @@ def send_news_by_category(classified_news):
 
         print(f"📤 發送訊息總長：{len(message)} 字元")
 
-        res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]}).json()
-        print(f"📤 類別 {cat} 發送狀態碼：{res.get('statusCode')}")
-        print("📤 LINE 回傳內容：", res)
+        res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]} )
+        print(f"📤 類別 {cat} 發送狀態碼：{res.status_code}")
+        try:
+            print("📤 LINE 回傳內容：", res.json())
+        except Exception:
+            print("📤 LINE 回傳非 JSON 格式：", res.text)
 
 if __name__ == "__main__":
     news_by_category = fetch_news()
