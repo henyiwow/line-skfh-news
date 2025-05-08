@@ -62,13 +62,14 @@ def shorten_url(long_url):
 
 def classify_news(text):
     text = text.lower()
-    
-    # 優化分類邏輯
+    logging.info(f"分類檢查：{text}")  # 顯示新聞文本，幫助調試
+
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in text for kw in keywords):
+            logging.info(f"分類為：{category}")  # 顯示匹配的分類
             return category
     
-    # 如果都沒有匹配到關鍵字，則分類為"其他"
+    logging.info(f"未能分類，標記為：其他")  # 顯示未匹配的情況
     return "其他"
 
 
