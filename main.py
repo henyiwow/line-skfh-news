@@ -4,9 +4,13 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote, urlparse
+import logging
 
-ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
-print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
+# 設定 logging 格式
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+ACCESS_TOKEN = os.getenv('LINE_NOTIFY_TOKEN') or "你的 LINE Notify 權杖"
+HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
 PREFERRED_SOURCES = [
     '工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
@@ -43,6 +47,7 @@ TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 invalid_sources = []
 
+
 def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
@@ -51,8 +56,9 @@ def shorten_url(long_url):
         if res.status_code == 200:
             return res.text.strip()
     except Exception as e:
-        print("⚠️ 短網址失敗：", e)
+        logging.warning(f"⚠️ 短網址失敗：{e}")
     return long_url
+
 
 def classify_news(text):
     text = text.lower()
@@ -60,6 +66,7 @@ def classify_news(text):
         if any(kw.lower() in text for kw in keywords):
             return category
     return "其他"
+
 
 def fetch_news():
     rss_urls = [
@@ -78,11 +85,11 @@ def fetch_news():
         try:
             res = requests.get(rss_url, timeout=10)
             res.raise_for_status()
-            print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
+            logging.info(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
 
             root = ET.fromstring(res.content)
             items = root.findall(".//item")
-            print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
+            logging.info(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
             for item in items:
                 title_elem = item.find('title')
@@ -122,55 +129,59 @@ def fetch_news():
                 description = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ''
                 combined_text = f"{title}\n{description}"
 
-                # 顯示抓到的標題與描述
-                print(f"抓到的標題：{title}")
-                print(f"抓到的描述：{description}")
-
                 short_link = shorten_url(link)
                 category = classify_news(combined_text)
                 formatted = f"📰 {title}\n📌 來源：{normalized_source}\n🔗 {short_link}"
                 classified_news[category].append(formatted)
 
         except Exception as e:
-            print(f"❌ RSS 來源錯誤：{rss_url} 原因：{e}")
+            logging.warning(f"❌ RSS 來源錯誤：{rss_url} 原因：{e}")
             invalid_sources.append(f"{rss_url}\n錯誤原因：{e}\n")
 
     return classified_news
 
-def send_news_by_category(classified_news):
-    url = 'https://api.line.me/v2/bot/message/broadcast'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {ACCESS_TOKEN}'
-    }
 
+def send_news_by_category(classified_news):
     for cat, items in classified_news.items():
         if not items:
             continue
 
-        message = f"【業企部 今日{cat}新聞整理】\n\n"
+        message = f"【今日{cat}新聞整理】\n\n"
         message += f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
         for idx, item in enumerate(items, 1):
             message += f"{idx}. {item}\n\n"
         message += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
 
-        print(f"📤 發送訊息總長：{len(message)} 字元")
+        logging.info(f"📤 發送訊息總長：{len(message)} 字元")
+        
+        if len(message) > 1000:
+            message = message[:950] + "... (已截斷)"
+        
+        logging.info(f"📤 最終發送的訊息內容:\n{message}")
 
-        res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]} )
-        print(f"📤 類別 {cat} 發送狀態碼：{res.status_code}")
-        try:
-            print("📤 LINE 回傳內容：", res.json())
-        except Exception:
-            print("📤 LINE 回傳非 JSON 格式：", res.text)
+        response = requests.post(
+            "https://notify-api.line.me/api/notify",
+            headers=HEADERS,
+            data={"message": message}
+        )
+
+        logging.info(f"📤 類別 {cat} 發送狀態碼：{response.status_code}")
+        if response.status_code != 200:
+            logging.error(f"❌ 發送失敗，回應內容：{response.text}")
+        else:
+            logging.info(f"✅ 類別 {cat} 發送成功")
+
 
 if __name__ == "__main__":
+    logging.info(f"✅ Access Token 前 10 碼： {ACCESS_TOKEN[:10]}")
     news_by_category = fetch_news()
+    logging.info("✅ 已分類的新聞數量：" + str({cat: len(lst) for cat, lst in news_by_category.items()}))
     send_news_by_category(news_by_category)
 
     if invalid_sources:
-        print("\n⚠️ 以下 RSS 抓取失敗：\n")
+        logging.warning("\n⚠️ 以下 RSS 抓取失敗：\n")
         for src in invalid_sources:
-            print(src)
+            logging.warning(src)
 
 
 
