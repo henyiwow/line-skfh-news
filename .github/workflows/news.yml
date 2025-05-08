@@ -1,9 +1,9 @@
-name: Daily Skfh News Push (台灣時間早上8點執行)
+name: Daily Skfh News Push
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 00:00，也就是台灣時間 08:00 執行
-  workflow_dispatch:     # 允許手動觸發
+    - cron: '0 0 * * *'  # 每天台灣時間 08:00
+  workflow_dispatch:     # 支援手動觸發
 
 jobs:
   push-broadcast:
@@ -20,7 +20,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run main.py
