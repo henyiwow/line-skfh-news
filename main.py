@@ -45,7 +45,7 @@ invalid_sources = []
 
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')  
+        encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
@@ -56,8 +56,11 @@ def shorten_url(long_url):
 
 def classify_news(text):
     text = text.lower()
+    print(f"分類檢查文本: {text[:50]}...")  # 日誌：檢查要分類的新聞文本（只顯示前 50 個字）
     for category, keywords in CATEGORY_KEYWORDS.items():
+        print(f"檢查類別 {category}，關鍵字 {keywords}")
         if any(kw.lower() in text for kw in keywords):
+            print(f"匹配到類別 {category}")
             return category
     return "其他"
 
@@ -153,12 +156,9 @@ def send_news_by_category(classified_news):
 
         print(f"📤 發送訊息總長：{len(message)} 字元")
 
-        res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]})
-        print(f"📤 類別 {cat} 發送狀態碼：{res.status_code}")
-        try:
-            print("📤 LINE 回傳內容：", res.json())
-        except Exception:
-            print("📤 LINE 回傳非 JSON 格式：", res.text)
+        res = requests.post(url, headers=headers, json={"messages": [{"type": "text", "text": message}]}).json()
+        print(f"📤 類別 {cat} 發送狀態碼：{res.get('statusCode')}")
+        print("📤 LINE 回傳內容：", res)
 
 if __name__ == "__main__":
     news_by_category = fetch_news()
@@ -168,6 +168,7 @@ if __name__ == "__main__":
         print("\n⚠️ 以下 RSS 抓取失敗：\n")
         for src in invalid_sources:
             print(src)
+
 
 
 
