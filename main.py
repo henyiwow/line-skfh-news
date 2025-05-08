@@ -45,7 +45,7 @@ invalid_sources = []
 
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')
+        encoded_url = quote(long_url, safe='')  
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
@@ -131,6 +131,7 @@ def fetch_news():
             print(f"❌ RSS 來源錯誤：{rss_url} 原因：{e}")
             invalid_sources.append(f"{rss_url}\n錯誤原因：{e}\n")
 
+    print("✅ 已分類的新聞：", classified_news)  # 新增此行來檢查分類結果
     return classified_news
 
 def send_news_by_category(classified_news):
@@ -159,9 +160,9 @@ def send_news_by_category(classified_news):
         except Exception:
             print("📤 LINE 回傳非 JSON 格式：", res.text)
 
-# if __name__ == "__main__":
-#    news_by_category = fetch_news()
-#    send_news_by_category(news_by_category)
+if __name__ == "__main__":
+    news_by_category = fetch_news()
+    send_news_by_category(news_by_category)
 
     if invalid_sources:
         print("\n⚠️ 以下 RSS 抓取失敗：\n")
