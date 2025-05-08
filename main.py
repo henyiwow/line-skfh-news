@@ -62,9 +62,13 @@ def shorten_url(long_url):
 
 def classify_news(text):
     text = text.lower()
+    
+    # 優化分類邏輯
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in text for kw in keywords):
             return category
+    
+    # 如果都沒有匹配到關鍵字，則分類為"其他"
     return "其他"
 
 
@@ -153,23 +157,15 @@ def send_news_by_category(classified_news):
         message += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
 
         logging.info(f"📤 發送訊息總長：{len(message)} 字元")
-        
         if len(message) > 1000:
             message = message[:950] + "... (已截斷)"
-        
-        logging.info(f"📤 最終發送的訊息內容:\n{message}")
 
         response = requests.post(
             "https://notify-api.line.me/api/notify",
             headers=HEADERS,
             data={"message": message}
         )
-
         logging.info(f"📤 類別 {cat} 發送狀態碼：{response.status_code}")
-        if response.status_code != 200:
-            logging.error(f"❌ 發送失敗，回應內容：{response.text}")
-        else:
-            logging.info(f"✅ 類別 {cat} 發送成功")
 
 
 if __name__ == "__main__":
