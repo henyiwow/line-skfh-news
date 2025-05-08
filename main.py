@@ -67,10 +67,7 @@ def fetch_news():
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.cnyes.com/rss/cat/headline",
-        "https://www.chinatimes.com/rss/cn_realtimenews.xml",
-        "https://www.setn.com/Rss.aspx?PageGroupID=6"
+        "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
