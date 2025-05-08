@@ -159,9 +159,9 @@ def send_news_by_category(classified_news):
         except Exception:
             print("📤 LINE 回傳非 JSON 格式：", res.text)
 
-if __name__ == "__main__":
-    news_by_category = fetch_news()
-    send_news_by_category(news_by_category)
+# if __name__ == "__main__":
+#    news_by_category = fetch_news()
+#    send_news_by_category(news_by_category)
 
     if invalid_sources:
         print("\n⚠️ 以下 RSS 抓取失敗：\n")
