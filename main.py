@@ -1,42 +1,30 @@
 import requests
 import xml.etree.ElementTree as ET
 import logging
-import datetime
-from urllib.parse import quote
-import json
-import os
+import re
 
-# 設定 log 等級
-logging.basicConfig(level=logging.INFO)
-
-# LINE Notify 權杖 (替換成你的 Token)
-LINE_ACCESS_TOKEN = '你的 LINE Notify 權杖'
+# 設定 LINE Notify 的 Access Token
+LINE_ACCESS_TOKEN = '你的LINE_NOTIFY_ACCESS_TOKEN'
 LINE_NOTIFY_API_URL = 'https://notify-api.line.me/api/notify'
 
-# 設定需要抓取的 RSS 來源
-RSS_SOURCES = [
+# 設定 logging
+logging.basicConfig(level=logging.INFO)
+
+# 設定 Google News RSS 的 URL
+rss_urls = [
     "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-    "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
 ]
 
-# 定義分類的關鍵字
+# 類別與關鍵字對應
 CATEGORY_KEYWORDS = {
-    '新光金控': ['新光金控', '新光人壽'],
-    '台新金控': ['台新金控', '台新人壽'],
+    '新光金控': ['新光金控'],
+    '台新金控': ['台新金控'],
     '保險': ['壽險', '保險', '人壽'],
-    '金控': ['金控', '金融控股'],
-}
-
-# 用來儲存分類結果
-classified_news = {
-    '新光金控': 0,
-    '台新金控': 0,
-    '保險': 0,
-    '金控': 0,
-    '其他': 0
+    '金控': ['金控', '金融控股']
 }
 
 # 發送 LINE 訊息
@@ -44,7 +32,7 @@ def send_line_notify(message):
     headers = {
         'Authorization': 'Bearer ' + LINE_ACCESS_TOKEN
     }
-    payload = {'message': message}
+    payload = {'message': message.encode('utf-8')}  # 確保 message 是 utf-8 編碼
     try:
         response = requests.post(LINE_NOTIFY_API_URL, headers=headers, data=payload)
         if response.status_code == 200:
@@ -54,66 +42,69 @@ def send_line_notify(message):
     except Exception as e:
         logging.error(f"發送 LINE 訊息發生錯誤: {e}")
 
-# 擷取 RSS 並分類
-def fetch_and_classify_news():
+# 擷取 Google News RSS 資料
+def fetch_rss_data():
     all_news = []
-    for url in RSS_SOURCES:
+    for url in rss_urls:
+        logging.info(f"從 {url} 擷取新聞...")
         try:
-            logging.info(f"從 {url} 擷取資料中...")
             response = requests.get(url)
             if response.status_code == 200:
-                logging.info(f"成功從 {url} 擷取新聞")
                 root = ET.fromstring(response.content)
-                # 解析每一條新聞
-                for item in root.findall('.//item'):
-                    title = item.find('title').text
-                    description = item.find('description').text
-                    link = item.find('link').text
-                    published_date = item.find('pubDate').text
-                    # 組合標題與描述進行分類
-                    news_text = (title or "") + " " + (description or "")
-                    category = classify_news(news_text)
-                    all_news.append({'title': title, 'link': link, 'category': category, 'published_date': published_date})
-                    classified_news[category] += 1
+                items = root.findall(".//item")
+                for item in items:
+                    title = item.find("title").text
+                    link = item.find("link").text
+                    description = item.find("description").text
+                    pub_date = item.find("pubDate").text
+                    all_news.append({'title': title, 'link': link, 'description': description, 'pubDate': pub_date})
+                logging.info(f"成功擷取 {len(items)} 筆新聞")
             else:
-                logging.error(f"從 {url} 擷取資料失敗，狀態碼：{response.status_code}")
+                logging.error(f"無法擷取資料，HTTP 狀態碼: {response.status_code}")
         except Exception as e:
-            logging.error(f"擷取 {url} 資料時發生錯誤: {e}")
-    
+            logging.error(f"擷取資料時發生錯誤: {e}")
     return all_news
 
-# 根據新聞內容進行分類
-def classify_news(text):
-    text = text.lower()  # 確保全小寫進行比對
-    logging.info(f"分類檢查：{text}")  # 顯示新聞文本，幫助調試
+# 計算並分類新聞
+def categorize_news(all_news):
+    categorized_news = {key: [] for key in CATEGORY_KEYWORDS}
+    categorized_news['其他'] = []
 
-    # 根據關鍵字分類
-    for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(kw.lower() in text for kw in keywords):
-            logging.info(f"分類為：{category}")  # 顯示匹配的分類
-            return category
+    for news in all_news:
+        categorized = False
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            if any(re.search(keyword, news['title'], re.IGNORECASE) for keyword in keywords):
+                categorized_news[category].append(news)
+                categorized = True
+                break
+        if not categorized:
+            categorized_news['其他'].append(news)
     
-    logging.info(f"未能分類，標記為：其他")  # 顯示未匹配的情況
-    return "其他"
+    return categorized_news
+
+# 構建要發送的訊息
+def build_message(categorized_news):
+    message = "每日金融與壽險新聞更新：\n\n"
+    for category, news_list in categorized_news.items():
+        message += f"--- {category} ---\n"
+        for news in news_list:
+            message += f"【{news['title']}】\n{news['link']}\n\n"
+    return message
 
 # 主程式
 def main():
-    # 擷取並分類新聞
-    news = fetch_and_classify_news()
-    
-    # 顯示分類結果
-    logging.info(f"已分類的新聞數量：{classified_news}")
-    
-    # 發送分類結果到 LINE
-    summary_message = "\n".join([f"{category}: {count}篇" for category, count in classified_news.items()])
-    send_line_notify(f"今日新聞分類結果：\n{summary_message}")
-    
-    # 發送具體新聞到 LINE
-    for article in news:
-        message = f"標題: {article['title']}\n連結: {article['link']}\n分類: {article['category']}\n發布日期: {article['published_date']}\n"
-        send_line_notify(message)
+    all_news = fetch_rss_data()
+    if not all_news:
+        logging.info("沒有抓到新聞")
+        return
 
-if __name__ == '__main__':
+    categorized_news = categorize_news(all_news)
+    logging.info(f"已分類的新聞數量：{ {key: len(val) for key, val in categorized_news.items()} }")
+    
+    message = build_message(categorized_news)
+    send_line_notify(message)
+
+if __name__ == "__main__":
     main()
 
 
