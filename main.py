@@ -1,69 +1,93 @@
 import requests
-import os
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
-import email.utils
-from urllib.parse import quote, urlparse
 import logging
+import datetime
+from urllib.parse import quote
+import json
+import os
 
-# 設定 logging 格式
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+# 設定 log 等級
+logging.basicConfig(level=logging.INFO)
 
-ACCESS_TOKEN = os.getenv('LINE_NOTIFY_TOKEN') or "你的 LINE Notify 權杖"
-HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
+# LINE Notify 權杖 (替換成你的 Token)
+LINE_ACCESS_TOKEN = '你的 LINE Notify 權杖'
+LINE_NOTIFY_API_URL = 'https://notify-api.line.me/api/notify'
 
-PREFERRED_SOURCES = [
-    '工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
-    '中時新聞網', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網',
-    '鏡周刊網', '自由財經', '中華日報', '台灣新生報', '旺報', '三立新聞網',
-    '天下雜誌', '奇摩新聞', '《現代保險》雜誌', 'MoneyDJ', '遠見雜誌',
-    '自由時報', 'Ettoday財經雲', '鏡週刊Mirror Media', '匯流新聞網',
-    'Newtalk新聞', '奇摩股市', 'news.cnyes.com', '中央社', '民視新聞網',
-    '風傳媒', 'CMoney', '大紀元'
+# 設定需要抓取的 RSS 來源
+RSS_SOURCES = [
+    "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+    "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
 ]
 
-SOURCE_ALIASES = {
-    'udn.com': '聯合新聞網',
-    '聯合報': '聯合新聞網',
-    'ETtoday': 'Ettoday新聞雲',
-    'ettoday.net': 'Ettoday新聞雲',
-    'chinatimes.com': '中時新聞網',
-    'setn.com': '三立新聞網',
-    'cnyes.com': '鉅亨網',
-    'newtalk.tw': 'Newtalk新聞'
-}
-
+# 定義分類的關鍵字
 CATEGORY_KEYWORDS = {
-    "新光金控": ["新光金", "新光人壽", "新壽"],
-    "台新金控": ["台新金", "台新人壽", "台新壽"],
-    "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
-    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金"],
-    "其他": []
+    '新光金控': ['新光金控', '新光人壽'],
+    '台新金控': ['台新金控', '台新人壽'],
+    '保險': ['壽險', '保險', '人壽'],
+    '金控': ['金控', '金融控股'],
 }
 
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
+# 用來儲存分類結果
+classified_news = {
+    '新光金控': 0,
+    '台新金控': 0,
+    '保險': 0,
+    '金控': 0,
+    '其他': 0
+}
 
-TW_TZ = timezone(timedelta(hours=8))
-today = datetime.now(TW_TZ).date()
-invalid_sources = []
-
-
-def shorten_url(long_url):
+# 發送 LINE 訊息
+def send_line_notify(message):
+    headers = {
+        'Authorization': 'Bearer ' + LINE_ACCESS_TOKEN
+    }
+    payload = {'message': message}
     try:
-        encoded_url = quote(long_url, safe='')
-        api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
-        res = requests.get(api_url, timeout=5)
-        if res.status_code == 200:
-            return res.text.strip()
+        response = requests.post(LINE_NOTIFY_API_URL, headers=headers, data=payload)
+        if response.status_code == 200:
+            logging.info("成功發送 LINE 訊息")
+        else:
+            logging.error(f"發送 LINE 訊息失敗，狀態碼：{response.status_code}")
     except Exception as e:
-        logging.warning(f"⚠️ 短網址失敗：{e}")
-    return long_url
+        logging.error(f"發送 LINE 訊息發生錯誤: {e}")
 
+# 擷取 RSS 並分類
+def fetch_and_classify_news():
+    all_news = []
+    for url in RSS_SOURCES:
+        try:
+            logging.info(f"從 {url} 擷取資料中...")
+            response = requests.get(url)
+            if response.status_code == 200:
+                logging.info(f"成功從 {url} 擷取新聞")
+                root = ET.fromstring(response.content)
+                # 解析每一條新聞
+                for item in root.findall('.//item'):
+                    title = item.find('title').text
+                    description = item.find('description').text
+                    link = item.find('link').text
+                    published_date = item.find('pubDate').text
+                    # 組合標題與描述進行分類
+                    news_text = (title or "") + " " + (description or "")
+                    category = classify_news(news_text)
+                    all_news.append({'title': title, 'link': link, 'category': category, 'published_date': published_date})
+                    classified_news[category] += 1
+            else:
+                logging.error(f"從 {url} 擷取資料失敗，狀態碼：{response.status_code}")
+        except Exception as e:
+            logging.error(f"擷取 {url} 資料時發生錯誤: {e}")
+    
+    return all_news
 
+# 根據新聞內容進行分類
 def classify_news(text):
-    text = text.lower()
+    text = text.lower()  # 確保全小寫進行比對
     logging.info(f"分類檢查：{text}")  # 顯示新聞文本，幫助調試
 
+    # 根據關鍵字分類
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in text for kw in keywords):
             logging.info(f"分類為：{category}")  # 顯示匹配的分類
@@ -72,114 +96,25 @@ def classify_news(text):
     logging.info(f"未能分類，標記為：其他")  # 顯示未匹配的情況
     return "其他"
 
+# 主程式
+def main():
+    # 擷取並分類新聞
+    news = fetch_and_classify_news()
+    
+    # 顯示分類結果
+    logging.info(f"已分類的新聞數量：{classified_news}")
+    
+    # 發送分類結果到 LINE
+    summary_message = "\n".join([f"{category}: {count}篇" for category, count in classified_news.items()])
+    send_line_notify(f"今日新聞分類結果：\n{summary_message}")
+    
+    # 發送具體新聞到 LINE
+    for article in news:
+        message = f"標題: {article['title']}\n連結: {article['link']}\n分類: {article['category']}\n發布日期: {article['published_date']}\n"
+        send_line_notify(message)
 
-def fetch_news():
-    rss_urls = [
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-    ]
-
-    classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_links = set()
-    seen_titles = set()
-
-    for rss_url in rss_urls:
-        try:
-            res = requests.get(rss_url, timeout=10)
-            res.raise_for_status()
-            logging.info(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
-
-            root = ET.fromstring(res.content)
-            items = root.findall(".//item")
-            logging.info(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
-
-            for item in items:
-                title_elem = item.find('title')
-                link_elem = item.find('link')
-                pubDate_elem = item.find('pubDate')
-                if not all([title_elem, link_elem, pubDate_elem]):
-                    continue
-
-                title = title_elem.text.strip()
-                link = link_elem.text.strip()
-                pubDate_str = pubDate_elem.text.strip()
-
-                if not title or title.startswith("Google ニュース") or link in seen_links or title in seen_titles:
-                    continue
-
-                seen_links.add(link)
-                seen_titles.add(title)
-
-                source_elem = item.find('source')
-                source_name = source_elem.text.strip() if source_elem is not None and source_elem.text else "未標示"
-                normalized_source = SOURCE_ALIASES.get(source_name, source_name)
-
-                domain = urlparse(link).netloc.replace('www.', '')
-                normalized_source = SOURCE_ALIASES.get(domain, normalized_source)
-
-                pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
-                if pub_datetime.date() != today:
-                    continue
-
-                if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
-                    continue
-
-                if not any(src in normalized_source or src in title for src in PREFERRED_SOURCES):
-                    continue
-
-                desc_elem = item.find('description')
-                description = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ''
-                combined_text = f"{title}\n{description}"
-
-                short_link = shorten_url(link)
-                category = classify_news(combined_text)
-                formatted = f"📰 {title}\n📌 來源：{normalized_source}\n🔗 {short_link}"
-                classified_news[category].append(formatted)
-
-        except Exception as e:
-            logging.warning(f"❌ RSS 來源錯誤：{rss_url} 原因：{e}")
-            invalid_sources.append(f"{rss_url}\n錯誤原因：{e}\n")
-
-    return classified_news
-
-
-def send_news_by_category(classified_news):
-    for cat, items in classified_news.items():
-        if not items:
-            continue
-
-        message = f"【今日{cat}新聞整理】\n\n"
-        message += f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
-        for idx, item in enumerate(items, 1):
-            message += f"{idx}. {item}\n\n"
-        message += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
-
-        logging.info(f"📤 發送訊息總長：{len(message)} 字元")
-        if len(message) > 1000:
-            message = message[:950] + "... (已截斷)"
-
-        response = requests.post(
-            "https://notify-api.line.me/api/notify",
-            headers=HEADERS,
-            data={"message": message}
-        )
-        logging.info(f"📤 類別 {cat} 發送狀態碼：{response.status_code}")
-
-
-if __name__ == "__main__":
-    logging.info(f"✅ Access Token 前 10 碼： {ACCESS_TOKEN[:10]}")
-    news_by_category = fetch_news()
-    logging.info("✅ 已分類的新聞數量：" + str({cat: len(lst) for cat, lst in news_by_category.items()}))
-    send_news_by_category(news_by_category)
-
-    if invalid_sources:
-        logging.warning("\n⚠️ 以下 RSS 抓取失敗：\n")
-        for src in invalid_sources:
-            logging.warning(src)
-
+if __name__ == '__main__':
+    main()
 
 
 
