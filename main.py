@@ -34,18 +34,18 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽'
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
-# 生成短網址並加上特殊字符（例如 " %% "）來防止預覽
+# 生成短網址
 def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            # 使用 #no-preview 或 ?dummy=true 參數來避免預覽
-            return res.text.strip() + "?dummy=true"
+            short = res.text.strip()
+            return f"line://{short}"  # 使用 line:// 協議避免預覽卡片
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return long_url + "?dummy=true"
+    return f"line://{long_url}"  # 失敗時也套用 line:// 包裝
 
 # 根據標題分類新聞
 def classify_news(title):
@@ -128,7 +128,6 @@ def send_message_by_category(news_by_category):
         else:
             no_news_categories.append(category)
 
-    # 整合無新聞類別訊息
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
@@ -161,5 +160,6 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
