@@ -48,9 +48,9 @@ def shorten_url(long_url):
 
 # 根據標題分類新聞
 def classify_news(title):
-    title = title.lower()  # 將標題轉為小寫
+    title = title.lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(kw.lower() in title for kw in keywords):  # 關鍵字也轉為小寫
+        if any(kw.lower() in title for kw in keywords):
             return category
     return "其他"
 
@@ -70,82 +70,70 @@ def fetch_news():
     for rss_url in rss_urls:
         res = requests.get(rss_url)
         print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
+        if res.status_code != 200:
+            continue
 
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            items = root.findall(".//item")
-            print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
+        root = ET.fromstring(res.content)
+        items = root.findall(".//item")
+        print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
-            for item in items:
-                title_elem = item.find('title')
-                link_elem = item.find('link')
-                pubDate_elem = item.find('pubDate')
-                if title_elem is None or link_elem is None or pubDate_elem is None:
-                    continue
+        for item in items:
+            title_elem = item.find('title')
+            link_elem = item.find('link')
+            pubDate_elem = item.find('pubDate')
+            if title_elem is None or link_elem is None or pubDate_elem is None:
+                continue
 
-                title = title_elem.text.strip()
-                link = link_elem.text.strip()
-                pubDate_str = pubDate_elem.text.strip()
+            title = title_elem.text.strip()
+            link = link_elem.text.strip()
+            pubDate_str = pubDate_elem.text.strip()
 
-                if not title or title.startswith("Google ニュース"):
-                    continue
+            if not title or title.startswith("Google ニュース"):
+                continue
+            if link in seen_links:
+                continue
+            seen_links.add(link)
 
-                if link in seen_links:
-                    continue
-                seen_links.add(link)
+            source_elem = item.find('source')
+            source_name = source_elem.text.strip() if source_elem is not None else "未標示"
+            pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
+            if pub_datetime.date() != today:
+                continue
 
-                source_elem = item.find('source')
-                source_name = source_elem.text.strip() if source_elem is not None else "未標示"
+            if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
+                continue
+            if not any(src in source_name or src in title for src in PREFERRED_SOURCES):
+                continue
 
-                pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
-                pub_date = pub_datetime.date()
-                if pub_date != today:
-                    continue
+            short_link = shorten_url(link)
+            category = classify_news(title)
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            classified_news[category].append(formatted)
 
-                if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
-                    continue
-
-                if not any(src in source_name or src in title for src in PREFERRED_SOURCES):
-                    continue
-
-                short_link = shorten_url(link)
-                category = classify_news(title)
-                formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
-                classified_news[category].append(formatted)
-
-    news_text = f"📅 當日日期：{today.strftime('%Y-%m-%d')}\n\n"
-    for cat in ["新光金控", "台新金控", "保險", "金控", "其他"]:
-        if classified_news[cat]:
-            news_text += f"📂【{cat}】當日新聞整理 (共{len(classified_news[cat])}則)\n"
-            for idx, item in enumerate(classified_news[cat], 1):
-                news_text += f"{idx}. {item}\n\n"
-        else:
-            news_text += f"📂【{cat}】當日無相關新聞\n"
-
-    news_text += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
-    print("✅ 今日新聞內容：\n", news_text)
     return classified_news
 
-# 根據類別分開發送訊息
+# 發送分類訊息
 def send_message_by_category(news_by_category):
     max_length = 4000
+    no_news_categories = []
 
     for category, messages in news_by_category.items():
-        if messages:  # 如果該類別有消息
-            category_title = f"2025-05-09 業企部新聞整理【{category}】 今日新聞整理 (共{len(messages)}則)\n"  # 顯示類別標題
-            category_message = category_title + "\n"
-            category_message += "\n".join(messages)
-
-            # 如果訊息長度超過 4000 字元，則分割成多條訊息
-            for i in range(0, len(category_message), max_length):
-                chunk = category_message[i:i + max_length]
-                broadcast_message(chunk)
+        if messages:
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理】"
+            content = "\n".join(messages)
+            full_message = f"{title}\n\n{content}"
+            for i in range(0, len(full_message), max_length):
+                broadcast_message(full_message[i:i + max_length])
         else:
-            # 如果該類別沒有相關新聞
-            no_news_message = f"2025-05-09 業企部新聞整理【{category}】 今日新聞整理 (共0則)\n📂【{category}】當日無相關新聞"
-            broadcast_message(no_news_message)
+            no_news_categories.append(category)
 
-# 發送單條訊息到 LINE
+    # 整合無新聞類別訊息
+    if no_news_categories:
+        title = f"【{today} 業企部 今日無相關新聞分類整理】"
+        content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
+        broadcast_message(f"{title}\n\n{content}")
+
+# 發送到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
@@ -153,20 +141,19 @@ def broadcast_message(message):
         'Authorization': f'Bearer {ACCESS_TOKEN}'
     }
 
-    final_message = "【業企部 今日重點新聞整理】\n\n" + message
     data = {
         "messages": [{
             "type": "text",
-            "text": final_message
+            "text": message
         }]
     }
 
-    print(f"📤 發送訊息總長：{len(final_message)} 字元")
+    print(f"📤 發送訊息總長：{len(message)} 字元")
     res = requests.post(url, headers=headers, json=data)
     print(f"📤 LINE 回傳狀態碼：{res.status_code}")
     print("📤 LINE 回傳內容：", res.text)
 
-# 主程序
+# 主程式
 if __name__ == "__main__":
     news = fetch_news()
     if news:
