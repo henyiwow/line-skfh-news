@@ -34,27 +34,6 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽'
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
-# redirect cache 快取
-redirect_cache = {}
-
-# 取得實際新聞網址（從 Google News link 轉跳）
-def get_real_url(google_news_url):
-    if google_news_url in redirect_cache:
-        return redirect_cache[google_news_url]
-
-    try:
-        res = requests.get(google_news_url, timeout=5, allow_redirects=True)
-        if res.status_code == 200:
-            real_url = res.url
-            redirect_cache[google_news_url] = real_url
-            return real_url
-    except Exception as e:
-        print("⚠️ 轉址失敗：", e)
-
-    # 若轉址失敗，也暫存原始網址避免重複
-    redirect_cache[google_news_url] = google_news_url
-    return google_news_url
-
 # 生成短網址
 def shorten_url(long_url):
     try:
@@ -126,12 +105,9 @@ def fetch_news():
             if not any(src in source_name or src in title for src in PREFERRED_SOURCES):
                 continue
 
-            # 處理轉址取得真實連結，再產生短網址
-            real_link = get_real_url(link)
-            short_link = shorten_url(real_link)
-
+            short_link = shorten_url(link)
             category = classify_news(title)
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗（請複製開啟）{short_link}"
             classified_news[category].append(formatted)
 
     return classified_news
@@ -151,7 +127,6 @@ def send_message_by_category(news_by_category):
         else:
             no_news_categories.append(category)
 
-    # 整合無新聞類別訊息
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
@@ -184,4 +159,5 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
