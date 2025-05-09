@@ -34,17 +34,17 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽'
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
-# 生成短網址
+# 生成短網址並加上特殊字符（例如 " %% "）來防止預覽
 def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            return res.text.strip()
+            return res.text.strip() + " %%"
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return long_url
+    return long_url + " %%"
 
 # 根據標題分類新聞
 def classify_news(title):
@@ -62,6 +62,8 @@ def fetch_news():
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        # "https://feeds.feedburner.com/rsscna/finance",
+        # "https://news.ltn.com.tw/rss/all.xml",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
@@ -106,9 +108,8 @@ def fetch_news():
                 continue
 
             short_link = shorten_url(link)
-            short_link = short_link.replace("http://", "").replace("https://", "")  # 去除http/https協議
             category = classify_news(title)
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗（請複製開啟）{short_link}"
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
     return classified_news
