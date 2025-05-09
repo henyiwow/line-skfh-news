@@ -28,7 +28,7 @@ CATEGORY_KEYWORDS = {
 }
 
 # 排除關鍵字
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '保險套使用', '大西部人壽', '太陽人壽', '美國海岸保險']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
 
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
@@ -113,12 +113,14 @@ def fetch_news():
                 formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
                 classified_news[category].append(formatted)
 
-    news_text = f"📅 今日日期：{today.strftime('%Y-%m-%d')}\n\n"
+    news_text = f"📅 當日日期：{today.strftime('%Y-%m-%d')}\n\n"
     for cat in ["新光金控", "台新金控", "保險", "金控", "其他"]:
         if classified_news[cat]:
-            news_text += f"📂【{cat}】({len(classified_news[cat])}則)\n"
+            news_text += f"📂【{cat}】當日新聞整理 (共{len(classified_news[cat])}則)\n"
             for idx, item in enumerate(classified_news[cat], 1):
                 news_text += f"{idx}. {item}\n\n"
+        else:
+            news_text += f"📂【{cat}】當日無相關新聞\n"
 
     news_text += "📎 本新聞整理自 Google News RSS，連結已轉為短網址。"
     print("✅ 今日新聞內容：\n", news_text)
@@ -130,8 +132,7 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:  # 如果該類別有消息
-            # 設定分類標題，包含日期、部門名稱、分類名稱及新聞數量
-            category_title = f"{today.strftime('%Y-%m-%d')} 業企部新聞整理【{category}】 今日新聞整理 (共{len(messages)}則)\n"
+            category_title = f"2025-05-09 業企部新聞整理【{category}】 今日新聞整理 (共{len(messages)}則)\n"  # 顯示類別標題
             category_message = category_title + "\n"
             category_message += "\n".join(messages)
 
@@ -139,6 +140,10 @@ def send_message_by_category(news_by_category):
             for i in range(0, len(category_message), max_length):
                 chunk = category_message[i:i + max_length]
                 broadcast_message(chunk)
+        else:
+            # 如果該類別沒有相關新聞
+            no_news_message = f"2025-05-09 業企部新聞整理【{category}】 今日新聞整理 (共0則)\n📂【{category}】當日無相關新聞"
+            broadcast_message(no_news_message)
 
 # 發送單條訊息到 LINE
 def broadcast_message(message):
