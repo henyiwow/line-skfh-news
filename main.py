@@ -41,10 +41,11 @@ def shorten_url(long_url):
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            return res.text.strip() + " %%"
+            # 使用 #no-preview 或 ?dummy=true 參數來避免預覽
+            return res.text.strip() + "?dummy=true"
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return long_url + " %%"
+    return long_url + "?dummy=true"
 
 # 根據標題分類新聞
 def classify_news(title):
@@ -62,8 +63,6 @@ def fetch_news():
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        # "https://feeds.feedburner.com/rsscna/finance",
-        # "https://news.ltn.com.tw/rss/all.xml",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
