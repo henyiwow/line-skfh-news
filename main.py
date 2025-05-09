@@ -62,6 +62,8 @@ def fetch_news():
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://feeds.feedburner.com/rsscna/finance",
+        "https://news.ltn.com.tw/rss/all.xml",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
