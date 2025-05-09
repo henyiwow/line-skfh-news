@@ -1,9 +1,9 @@
-ts
 import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
+import requests
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -28,7 +28,7 @@ CATEGORY_KEYWORDS = {
 }
 
 # 排除關鍵字
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '保險套使用', '大西部人壽', '太陽人壽', '美國海岸保險']
 
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
@@ -130,7 +130,8 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:  # 如果該類別有消息
-            category_title = f"📂【{category}】 今日新聞整理\n"  # 顯示類別標題
+            # 設定分類標題，包含日期、部門名稱、分類名稱及新聞數量
+            category_title = f"{today.strftime('%Y-%m-%d')} 業企部新聞整理【{category}】 今日新聞整理 (共{len(messages)}則)\n"
             category_message = category_title + "\n"
             category_message += "\n".join(messages)
 
@@ -167,8 +168,3 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
-
-
-
-
