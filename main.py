@@ -34,6 +34,27 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽'
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
+# redirect cache 快取
+redirect_cache = {}
+
+# 取得實際新聞網址（從 Google News link 轉跳）
+def get_real_url(google_news_url):
+    if google_news_url in redirect_cache:
+        return redirect_cache[google_news_url]
+
+    try:
+        res = requests.get(google_news_url, timeout=5, allow_redirects=True)
+        if res.status_code == 200:
+            real_url = res.url
+            redirect_cache[google_news_url] = real_url
+            return real_url
+    except Exception as e:
+        print("⚠️ 轉址失敗：", e)
+
+    # 若轉址失敗，也暫存原始網址避免重複
+    redirect_cache[google_news_url] = google_news_url
+    return google_news_url
+
 # 生成短網址
 def shorten_url(long_url):
     try:
@@ -62,8 +83,6 @@ def fetch_news():
         "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+保險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        # "https://feeds.feedburner.com/rsscna/finance",
-        # "https://news.ltn.com.tw/rss/all.xml",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
@@ -107,7 +126,10 @@ def fetch_news():
             if not any(src in source_name or src in title for src in PREFERRED_SOURCES):
                 continue
 
-            short_link = shorten_url(link)
+            # 處理轉址取得真實連結，再產生短網址
+            real_link = get_real_url(link)
+            short_link = shorten_url(real_link)
+
             category = classify_news(title)
             formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
@@ -162,3 +184,4 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
