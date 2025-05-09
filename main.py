@@ -106,6 +106,7 @@ def fetch_news():
                 continue
 
             short_link = shorten_url(link)
+            short_link = short_link.replace("http://", "").replace("https://", "")  # 去除http/https協議
             category = classify_news(title)
             formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗（請複製開啟）{short_link}"
             classified_news[category].append(formatted)
@@ -127,6 +128,7 @@ def send_message_by_category(news_by_category):
         else:
             no_news_categories.append(category)
 
+    # 整合無新聞類別訊息
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
