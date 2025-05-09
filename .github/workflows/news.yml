@@ -2,8 +2,8 @@ name: Daily Skfh News Push
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每小時執行一次
-  workflow_dispatch:     # 支援手動觸發
+    - cron: '0 23 * * 1-5'  # 每週一至週五的台灣早上 7 點執行
+  workflow_dispatch:         # 支援手動觸發
 
 jobs:
   push-broadcast:
