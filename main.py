@@ -28,7 +28,7 @@ CATEGORY_KEYWORDS = {
 }
 
 # 排除關鍵字
-EXCLUDED_KEYWORDS = ['太陽人壽', '大西部人壽', '美國海岸保險']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
 
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
@@ -37,15 +37,15 @@ today = datetime.now(TW_TZ).date()
 # 生成短網址
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')
+        encoded_url = quote(long_url, safe='')  # 編碼 URL
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            short = res.text.strip()
-            return f"line://{short}"  # 使用 line:// 協議避免預覽卡片
+            short_url = res.text.strip()
+            return short_url  # 返回普通短網址
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return f"line://{long_url}"
+    return long_url  # 若短網址生成失敗，返回原始 URL
 
 # 根據標題分類新聞
 def classify_news(title):
@@ -120,14 +120,15 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:
-            title = f"【{today} 業企部 今日【{category}】重點新聞整理（共 {len(messages)} 則）】"
-            content = "\n\n".join(messages)
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
+            content = "\n".join(messages)
             full_message = f"{title}\n\n{content}"
             for i in range(0, len(full_message), max_length):
                 broadcast_message(full_message[i:i + max_length])
         else:
             no_news_categories.append(category)
 
+    # 整合無新聞類別訊息
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
@@ -142,10 +143,10 @@ def broadcast_message(message):
     }
 
     data = {
-        "messages": [{
+        "messages": [({
             "type": "text",
             "text": message
-        }]
+        })]
     }
 
     print(f"📤 發送訊息總長：{len(message)} 字元")
@@ -160,6 +161,7 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
 
