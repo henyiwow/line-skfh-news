@@ -28,7 +28,7 @@ CATEGORY_KEYWORDS = {
 }
 
 # 排除關鍵字
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
+EXCLUDED_KEYWORDS = ['太陽人壽', '大西部人壽', '美國海岸保險']
 
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
@@ -160,6 +160,7 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
 
