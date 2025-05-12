@@ -66,7 +66,7 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_links = set()
+    seen_links = set()  # 用來儲存已經處理過的新聞 URL
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -91,9 +91,9 @@ def fetch_news():
 
             if not title or title.startswith("Google ニュース"):
                 continue
-            if link in seen_links:
+            if link in seen_links:  # 如果新聞連結已經處理過，跳過
                 continue
-            seen_links.add(link)
+            seen_links.add(link)  # 記錄已處理過的新聞連結
 
             source_elem = item.find('source')
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
@@ -161,9 +161,4 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
-
-
-
-
 
