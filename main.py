@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
 import requests
+import hashlib
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -28,7 +29,7 @@ CATEGORY_KEYWORDS = {
 }
 
 # 排除關鍵字
-EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險', '神韻']
 
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
@@ -66,7 +67,7 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_links = set()  # 用來儲存已經處理過的新聞 URL
+    seen_hashes = set()  # 用來儲存已經處理過的新聞哈希值
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -91,9 +92,13 @@ def fetch_news():
 
             if not title or title.startswith("Google ニュース"):
                 continue
-            if link in seen_links:  # 如果新聞連結已經處理過，跳過
+
+            # 組合標題和連結並生成哈希
+            news_hash = hashlib.md5(f"{title}{link}".encode('utf-8')).hexdigest()
+
+            if news_hash in seen_hashes:  # 如果已經處理過這條新聞
                 continue
-            seen_links.add(link)  # 記錄已處理過的新聞連結
+            seen_hashes.add(news_hash)  # 記錄已處理過的新聞哈希
 
             source_elem = item.find('source')
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
@@ -143,10 +148,10 @@ def broadcast_message(message):
     }
 
     data = {
-        "messages": [({
+        "messages": [{
             "type": "text",
             "text": message
-        })]
+        }]
     }
 
     print(f"📤 發送訊息總長：{len(message)} 字元")
@@ -161,4 +166,5 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
