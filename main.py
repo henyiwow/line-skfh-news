@@ -23,7 +23,7 @@ CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
     "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
     "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
-    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金"],
+    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"],
     "其他": []
 }
 
@@ -57,12 +57,10 @@ def classify_news(title):
 
 # 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
-    # 檢查來源名稱是否包含台灣的媒體名稱
     taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
                       '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
     if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
         return True
-    # 檢查新聞的 URL 是否來自台灣 (.tw)
     if '.tw' in link:
         return True
     return False
@@ -78,6 +76,7 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
+    processed_links = set()  # 用來追蹤已經處理過的新聞鏈接
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -114,6 +113,11 @@ def fetch_news():
             if not is_taiwan_news(source_name, link):
                 continue
 
+            # 避免處理重複的新聞
+            if link in processed_links:
+                continue
+            processed_links.add(link)
+
             short_link = shorten_url(link)
             category = classify_news(title)
             formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
@@ -136,7 +140,6 @@ def send_message_by_category(news_by_category):
         else:
             no_news_categories.append(category)
 
-    # 整合無新聞類別訊息
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
@@ -169,4 +172,5 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
