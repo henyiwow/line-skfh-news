@@ -58,7 +58,8 @@ def classify_news(title):
 # 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     # 檢查來源名稱是否包含台灣的媒體名稱
-    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網']
+    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
+                      '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
     if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
         return True
     # 檢查新聞的 URL 是否來自台灣 (.tw)
