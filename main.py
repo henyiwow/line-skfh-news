@@ -50,9 +50,13 @@ def shorten_url(long_url):
 # 根據標題分類新聞
 def classify_news(title):
     title = title.lower()
+    
+    # 優先分類順序（越先出現的分類優先）
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in title for kw in keywords):
             return category
+    
+    # 若沒有匹配任何分類，則默認為 "其他"
     return "其他"
 
 # 判斷是否為台灣新聞
