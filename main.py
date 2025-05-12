@@ -55,6 +55,17 @@ def classify_news(title):
             return category
     return "其他"
 
+# 判斷是否為台灣新聞
+def is_taiwan_news(source_name, link):
+    # 檢查來源名稱是否包含台灣的媒體名稱
+    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網']
+    if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
+        return True
+    # 檢查新聞的 URL 是否來自台灣 (.tw)
+    if '.tw' in link:
+        return True
+    return False
+
 # 擷取新聞
 def fetch_news():
     rss_urls = [
@@ -99,7 +110,7 @@ def fetch_news():
 
             if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                 continue
-            if not any(src in source_name or src in title for src in PREFERRED_SOURCES):
+            if not is_taiwan_news(source_name, link):
                 continue
 
             short_link = shorten_url(link)
@@ -157,5 +168,4 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
 
