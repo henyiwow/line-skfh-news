@@ -4,9 +4,6 @@ from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
 import requests
-import hashlib
-import re
-from difflib import SequenceMatcher
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -58,10 +55,6 @@ def classify_news(title):
             return category
     return "其他"
 
-# 計算文本相似度 (基於 Levenshtein 距離或 SequenceMatcher)
-def calculate_similarity(str1, str2):
-    return SequenceMatcher(None, str1, str2).ratio()
-
 # 擷取新聞
 def fetch_news():
     rss_urls = [
@@ -73,8 +66,6 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_hashes = set()  # 用來儲存已經處理過的新聞哈希值
-    seen_titles = []  # 用來儲存已經處理過的標題
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -99,26 +90,6 @@ def fetch_news():
 
             if not title or title.startswith("Google ニュース"):
                 continue
-
-            # 確保沒有處理過相似的標題
-            is_duplicate = False
-            for seen_title in seen_titles:
-                similarity = calculate_similarity(title, seen_title)
-                if similarity > 0.9:  # 設定相似度閾值
-                    is_duplicate = True
-                    break
-
-            if is_duplicate:
-                continue
-
-            seen_titles.append(title)  # 記錄已處理的標題
-
-            # 組合標題和連結並生成哈希
-            news_hash = hashlib.md5(f"{title}{link}".encode('utf-8')).hexdigest()
-
-            if news_hash in seen_hashes:  # 如果已經處理過這條新聞
-                continue
-            seen_hashes.add(news_hash)  # 記錄已處理過的新聞哈希
 
             source_elem = item.find('source')
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
