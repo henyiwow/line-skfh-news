@@ -45,7 +45,7 @@ def shorten_url(long_url):
             return f"line://{short}"  # 使用 line:// 協議避免預覽卡片
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return f"line://{long_url}"  # 失敗時也套用 line:// 包裝
+    return f"line://{long_url}"
 
 # 根據標題分類新聞
 def classify_news(title):
@@ -120,8 +120,8 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:
-            title = f"【{today} 業企部 今日【{category}】重點新聞整理】"
-            content = "\n".join(messages)
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理（共 {len(messages)} 則）】"
+            content = "\n\n".join(messages)
             full_message = f"{title}\n\n{content}"
             for i in range(0, len(full_message), max_length):
                 broadcast_message(full_message[i:i + max_length])
@@ -160,6 +160,7 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
 
