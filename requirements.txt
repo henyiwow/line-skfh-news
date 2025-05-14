@@ -1,5 +1,5 @@
 requests
 scikit-learn
-lxml
+lxml[html_clean]  # 加入 lxml[html_clean] 來解決問題
 beautifulsoup4
-newspaper3k  # 確保你也安裝 newspaper3k 用於抓取新聞內容
+newspaper3k
