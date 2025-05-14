@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
 import requests
-from newspaper import Article  # 用於抓取新聞內文
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -123,15 +122,9 @@ def fetch_news():
                 continue
             processed_links.add(link)
 
-            # 抓取內文並生成摘要
-            article = Article(link)
-            article.download()
-            article.parse()
-            summary = article.text[:100] if article.text else title[:100]  # 摘要為內容的前100字
-
             short_link = shorten_url(link)
             category = classify_news(title)
-            formatted = f"📰 {title}\n摘要：{summary}\n📌 來源：{source_name}\n🔗 {short_link}"
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
     return classified_news
@@ -174,9 +167,13 @@ def broadcast_message(message):
     print(f"📤 發送訊息總長：{len(message)} 字元")
     res = requests.post(url, headers=headers, json=data)
     print(f"📤 LINE 回傳狀態碼：{res.status_code}")
-    print(f"📤 LINE 回傳內容：{res.json() if res.status_code == 200 else res.text}")
+    print("📤 LINE 回傳內容：", res.text)
 
 # 主程式
-if __name__ == '__main__':
-    classified_news = fetch_news()
-    send_message_by_category(classified_news)
+if __name__ == "__main__":
+    news = fetch_news()
+    if news:
+        send_message_by_category(news)
+    else:
+        print("⚠️ 沒有符合條件的新聞，不發送。")
+
