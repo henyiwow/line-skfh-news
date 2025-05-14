@@ -9,6 +9,7 @@ import requests
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
+# 預設來源
 PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
                      '中時新聞網', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網',
                      '鏡周刊網', '自由財經', '中華日報', '台灣新生報', '旺報', '三立新聞網',
@@ -17,45 +18,58 @@ PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新
                      'Newtalk新聞', '奇摩股市', 'news.cnyes.com', '中央社', '民視新聞網',
                      '風傳媒', 'CMoney', '大紀元']
 
+# 分類關鍵字
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
     "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
+    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"],
     "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
-    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"]
+    "其他": []
 }
 
+# 排除關鍵字
 EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
 
+# 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
+# 生成短網址
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')
+        encoded_url = quote(long_url, safe='')  # 編碼 URL
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            return res.text.strip()
+            short_url = res.text.strip()
+            return short_url  # 返回普通短網址
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return long_url
+    return long_url  # 若短網址生成失敗，返回原始 URL
 
+# 根據標題分類新聞
 def classify_news(title):
     title = title.lower()
-    for category in ["新光金控", "台新金控", "保險", "金控"]:
-        keywords = CATEGORY_KEYWORDS[category]
+    
+    # 優先分類順序（越先出現的分類優先）
+    for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in title for kw in keywords):
             return category
+    
+    # 若沒有匹配任何分類，則默認為 "其他"
     return "其他"
 
+# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
-    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報',
-                      '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網',
-                      'Ettoday新聞雲', '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
-    if any(src in source_name for src in taiwan_sources):
+    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
+                      '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
+    if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
         return True
-    return '.tw' in link
+    if '.tw' in link:
+        return True
+    return False
 
+# 擷取新聞
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
@@ -66,15 +80,17 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    processed_links = set()
+    processed_links = set()  # 用來追蹤已經處理過的新聞鏈接
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
+        print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
         if res.status_code != 200:
             continue
 
         root = ET.fromstring(res.content)
         items = root.findall(".//item")
+        print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
 
         for item in items:
             title_elem = item.find('title')
@@ -95,72 +111,85 @@ def fetch_news():
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
             if pub_datetime.date() != today:
                 continue
+
             if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
+
+            # 避免處理重複的新聞
             if link in processed_links:
                 continue
             processed_links.add(link)
 
-            description_elem = item.find('description')
-            description = description_elem.text.strip() if description_elem is not None else "無摘要"
-            description = description.replace('\n', '').replace('\r', '').strip()
-            if len(description) > 100:
-                description = description[:100] + '...'
-
             short_link = shorten_url(link)
             category = classify_news(title)
-
-            classified_news[category].append({
-                'title': title,
-                'source': source_name,
-                'link': short_link,
-                'description': description
-            })
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            classified_news[category].append(formatted)
 
     return classified_news
 
-def send_summary_message(news_by_category):
-    order = ["新光金控", "台新金控", "保險", "金控"]
-    summary_parts = [f"【{today} 重點新聞摘要】\n"]
+# 生成摘要（限制 100 字）
+def generate_summary(title, max_length=100):
+    # 若標題過長，截斷至最大長度
+    if len(title) > max_length:
+        return title[:max_length] + "..."  # 以...結尾，表示摘要被截斷
+    return title
 
-    for cat in order:
-        news_items = news_by_category.get(cat, [])
-        if not news_items:
-            continue
-        summary_parts.append(f"📂 {cat}（共 {len(news_items)} 則）")
-        for item in news_items:
-            summary_parts.append(f"📰 {item['title']}\n📄 {item['description']}\n🔗 {item['link']}")
+# 發送分類新聞與摘要
+def send_message_by_category_with_summary(news_by_category):
+    max_length = 4000  # LINE 訊息最大字數
+    no_news_categories = []
 
-    full_summary = "\n\n".join(summary_parts)
+    for category, messages in news_by_category.items():
+        if messages:
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
+            content = "\n".join(messages)
+            full_message = f"{title}\n\n{content}"
 
-    # 控制訊息長度不超過 4000 字（LINE 限制），若過長則截斷
-    if len(full_summary) > 4000:
-        full_summary = full_summary[:3990] + "\n...（已截斷）"
+            # 發送新聞內容
+            for i in range(0, len(full_message), max_length):
+                broadcast_message(full_message[i:i + max_length])
 
-    broadcast_message(full_summary)
+            # 發送摘要內容
+            summaries = [generate_summary(msg.split('\n')[0], 100) for msg in messages]  # 取每條新聞的標題作為摘要
+            summary_message = f"【{today} 業企部 今日【{category}】重點新聞摘要】 共{len(summaries)}則摘要"
 
+            # 將摘要內容拆分並發送
+            for i in range(0, len(summaries), max_length):
+                broadcast_message(summary_message + "\n" + "\n".join(summaries[i:i + max_length]))
+        else:
+            no_news_categories.append(category)
+
+    if no_news_categories:
+        title = f"【{today} 業企部 今日無相關新聞分類整理】"
+        content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
+        broadcast_message(f"{title}\n\n{content}")
+
+# 發送到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {ACCESS_TOKEN}'
     }
+
     data = {
         "messages": [{
             "type": "text",
             "text": message
         }]
     }
+
     print(f"📤 發送訊息總長：{len(message)} 字元")
     res = requests.post(url, headers=headers, json=data)
     print(f"📤 LINE 回傳狀態碼：{res.status_code}")
     print("📤 LINE 回傳內容：", res.text)
 
+# 主程式
 if __name__ == "__main__":
     news = fetch_news()
     if news:
-        send_summary_message(news)
+        send_message_by_category_with_summary(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
