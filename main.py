@@ -96,12 +96,15 @@ def fetch_news():
             title_elem = item.find('title')
             link_elem = item.find('link')
             pubDate_elem = item.find('pubDate')
-            if title_elem is None or link_elem is None or pubDate_elem is None:
+            description_elem = item.find('description')  # 取得內文
+
+            if title_elem is None or link_elem is None or pubDate_elem is None or description_elem is None:
                 continue
 
             title = title_elem.text.strip()
             link = link_elem.text.strip()
             pubDate_str = pubDate_elem.text.strip()
+            description = description_elem.text.strip()
 
             if not title or title.startswith("Google ニュース"):
                 continue
@@ -124,7 +127,9 @@ def fetch_news():
 
             short_link = shorten_url(link)
             category = classify_news(title)
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            summary = description[:100]  # 截取前 100 字為摘要
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}\n摘要：{summary}"
+
             classified_news[category].append(formatted)
 
     return classified_news
@@ -134,7 +139,6 @@ def send_message_by_category(news_by_category):
     max_length = 4000
     no_news_categories = []
 
-    # 先發送分類新聞訊息
     for category, messages in news_by_category.items():
         if messages:
             title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
@@ -145,23 +149,10 @@ def send_message_by_category(news_by_category):
         else:
             no_news_categories.append(category)
 
-    # 若某分類無新聞，發送無新聞分類通知
     if no_news_categories:
         title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
-
-# 發送分類摘要訊息
-def send_summary_by_category(news_by_category):
-    # 構建摘要內容
-    summary_content = []
-    for category, messages in news_by_category.items():
-        for msg in messages:
-            title, *rest = msg.split("\n")
-            summary_content.append(f"📰 {title[:100]}")  # 摘要長度不超過100字
-    full_summary = "\n".join(summary_content)
-    if full_summary:
-        broadcast_message(f"【{today} 業企部 今日新聞摘要】\n\n{full_summary}")
 
 # 發送到 LINE
 def broadcast_message(message):
@@ -187,8 +178,7 @@ def broadcast_message(message):
 if __name__ == "__main__":
     news = fetch_news()
     if news:
-        send_message_by_category(news)  # 發送分類新聞訊息
-        send_summary_by_category(news)  # 發送分類摘要訊息
+        send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
 
