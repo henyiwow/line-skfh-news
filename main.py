@@ -5,20 +5,19 @@ import email.utils
 from urllib.parse import quote
 import requests
 
-# 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
-# 預設來源
-PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
-                     '中時新聞網', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網',
-                     '鏡周刊網', '自由財經', '中華日報', '台灣新生報', '旺報', '三立新聞網',
-                     '天下雜誌', '奇摩新聞', '《現代保險》雜誌', 'MoneyDJ', '遠見雜誌',
-                     '自由時報', 'Ettoday財經雲', '鏡週刊Mirror Media', '匯流新聞網',
-                     'Newtalk新聞', '奇摩股市', 'news.cnyes.com', '中央社', '民視新聞網',
-                     '風傳媒', 'CMoney', '大紀元']
+PREFERRED_SOURCES = [
+    '工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
+    '中時新聞網', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網',
+    '鏡周刊網', '自由財經', '中華日報', '台灣新生報', '旺報', '三立新聞網',
+    '天下雜誌', '奇摩新聞', '《現代保險》雜誌', 'MoneyDJ', '遠見雜誌',
+    '自由時報', 'Ettoday財經雲', '鏡週刊Mirror Media', '匯流新聞網',
+    'Newtalk新聞', '奇摩股市', 'news.cnyes.com', '中央社', '民視新聞網',
+    '風傳媒', 'CMoney', '大紀元'
+]
 
-# 分類關鍵字
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
     "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
@@ -27,39 +26,28 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
-# 排除關鍵字
 EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
-
-# 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
 today = datetime.now(TW_TZ).date()
 
-# 生成短網址
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')  # 編碼 URL
+        encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            short_url = res.text.strip()
-            return short_url  # 返回普通短網址
+            return res.text.strip()
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
-    return long_url  # 若短網址生成失敗，返回原始 URL
+    return long_url
 
-# 根據標題分類新聞
 def classify_news(title):
     title = title.lower()
-    
-    # 優先分類順序（越先出現的分類優先）
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in title for kw in keywords):
             return category
-    
-    # 若沒有匹配任何分類，則默認為 "其他"
     return "其他"
 
-# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
                       '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
@@ -69,7 +57,6 @@ def is_taiwan_news(source_name, link):
         return True
     return False
 
-# 擷取新聞
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
@@ -80,7 +67,7 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    processed_links = set()  # 用來追蹤已經處理過的新聞鏈接
+    processed_links = set()
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -116,20 +103,39 @@ def fetch_news():
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
-
-            # 避免處理重複的新聞
             if link in processed_links:
                 continue
             processed_links.add(link)
 
             short_link = shorten_url(link)
+
+            desc_elem = item.find('description')
+            description = desc_elem.text.strip() if desc_elem is not None else ""
+            summary = description[:50] + "..." if description else ""
+
             category = classify_news(title)
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n📝 {summary}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
     return classified_news
 
-# 發送分類訊息
+def broadcast_message(message):
+    url = 'https://api.line.me/v2/bot/message/broadcast'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {ACCESS_TOKEN}'
+    }
+    data = {
+        "messages": [{
+            "type": "text",
+            "text": message
+        }]
+    }
+    print(f"📤 發送訊息總長：{len(message)} 字元")
+    res = requests.post(url, headers=headers, json=data)
+    print(f"📤 LINE 回傳狀態碼：{res.status_code}")
+    print("📤 LINE 回傳內容：", res.text)
+
 def send_message_by_category(news_by_category):
     max_length = 4000
     no_news_categories = []
@@ -149,32 +155,41 @@ def send_message_by_category(news_by_category):
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
 
-# 發送到 LINE
-def broadcast_message(message):
-    url = 'https://api.line.me/v2/bot/message/broadcast'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {ACCESS_TOKEN}'
-    }
+    # ➕ 加發重點摘要訊息（分類排序 + 描述摘要）
+    summary_order = ["新光金控", "台新金控", "保險", "金控"]
+    summary_message = f"📌 {today} 重點新聞摘要（依類別排序）\n"
+    remaining_chars = 4000 - len(summary_message)
 
-    data = {
-        "messages": [{
-            "type": "text",
-            "text": message
-        }]
-    }
+    for cat in summary_order:
+        messages = news_by_category.get(cat, [])
+        if not messages:
+            continue
 
-    print(f"📤 發送訊息總長：{len(message)} 字元")
-    res = requests.post(url, headers=headers, json=data)
-    print(f"📤 LINE 回傳狀態碼：{res.status_code}")
-    print("📤 LINE 回傳內容：", res.text)
+        added_header = False
+        for msg in messages:
+            msg_length = len(msg) + 1
+            if remaining_chars >= msg_length:
+                if not added_header:
+                    header = f"\n📂【{cat}】\n"
+                    if remaining_chars < len(header):
+                        break
+                    summary_message += header
+                    remaining_chars -= len(header)
+                    added_header = True
 
-# 主程式
+                summary_message += msg + "\n"
+                remaining_chars -= msg_length
+            else:
+                break
+
+    broadcast_message(summary_message.strip())
+
 if __name__ == "__main__":
     news = fetch_news()
     if news:
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
