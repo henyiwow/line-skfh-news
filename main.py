@@ -33,16 +33,16 @@ EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽'
 # 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
+today = now.date()
 
 # 生成短網址
 def shorten_url(long_url):
     try:
-        encoded_url = quote(long_url, safe='')  # 編碼 URL
+        encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
         if res.status_code == 200:
-            short_url = res.text.strip()
-            return short_url
+            return res.text.strip()
     except Exception as e:
         print("⚠️ 短網址失敗：", e)
     return long_url
@@ -55,11 +55,14 @@ def classify_news(title):
             return category
     return "其他"
 
-# 判斷是否為台灣新聞
+# ✅ 判斷是否為台灣新聞（保留模糊比對，排除香港經濟日報）
 def is_taiwan_news(source_name, link):
-    taiwan_sources = ['工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網', '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
-                      '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌']
-    if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
+    taiwan_sources = [
+        '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
+        '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
+        '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌'
+    ]
+    if any(taiwan_source in source_name for taiwan_source in taiwan_sources) and "香港經濟日報" not in source_name:
         return True
     if '.tw' in link:
         return True
@@ -106,7 +109,7 @@ def fetch_news():
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
 
-            # ✅ 過去 24 小時內新聞
+            # ✅ 只保留 24 小時內新聞
             if now - pub_datetime > timedelta(hours=24):
                 continue
 
@@ -132,7 +135,7 @@ def send_message_by_category(news_by_category):
 
     for category, messages in news_by_category.items():
         if messages:
-            title = f"【過去 24 小時】業企部【{category}】重點新聞整理，共 {len(messages)} 則"
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
             content = "\n".join(messages)
             full_message = f"{title}\n\n{content}"
             for i in range(0, len(full_message), max_length):
@@ -141,7 +144,7 @@ def send_message_by_category(news_by_category):
             no_news_categories.append(category)
 
     if no_news_categories:
-        title = f"【過去 24 小時】業企部無相關新聞分類整理"
+        title = f"【{today} 業企部 今日無相關新聞分類整理】"
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
 
