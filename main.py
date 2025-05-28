@@ -3,24 +3,20 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
-from difflib import SequenceMatcher
-import re
 import requests
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
-# 設定 ACCESS_TOKEN
+# 語意模型初始化
+model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+# 設定門檻（相似度 >= 此值視為重複）
+SIMILARITY_THRESHOLD = 0.95
+
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
-# 預設來源
-PREFERRED_SOURCES = ['工商時報', '中國時報', '經濟日報', 'Ettoday新聞雲', '工商時報網',
-                     '中時新聞網', '台灣雅虎奇摩', '經濟日報網', '鉅亨網', '聯合新聞網',
-                     '鏡周刊網', '自由財經', '中華日報', '台灣新生報', '旺報', '三立新聞網',
-                     '天下雜誌', '奇摩新聞', '《現代保險》雜誌', 'MoneyDJ', '遠見雜誌',
-                     '自由時報', 'Ettoday財經雲', '鏡週刊Mirror Media', '匯流新聞網',
-                     'Newtalk新聞', '奇摩股市', 'news.cnyes.com', '中央社', '民視新聞網',
-                     '風傳媒', 'CMoney', '大紀元']
-
-# 分類關鍵字
 CATEGORY_KEYWORDS = {
     "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
     "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
@@ -29,38 +25,12 @@ CATEGORY_KEYWORDS = {
     "其他": []
 }
 
-# 排除關鍵字
 EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
 
-# 台灣時區設定
 TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
-# 清洗標題（去除符號與多餘空白）
-def clean_title(title):
-    title = re.sub(r'[^\w\s]', '', title.lower())
-    title = re.sub(r'\s+', ' ', title).strip()
-    return title
-
-# Jaccard 相似度比對
-def jaccard_similarity(a, b):
-    set_a = set(clean_title(a).split())
-    set_b = set(clean_title(b).split())
-    if not set_a or not set_b:
-        return 0
-    return len(set_a & set_b) / len(set_a | set_b)
-
-# 是否與已存在標題相似
-def is_similar_to_existing(title, existing_titles, seq_threshold=0.95, jaccard_threshold=0.85):
-    for et in existing_titles:
-        if SequenceMatcher(None, clean_title(title), clean_title(et)).ratio() > seq_threshold:
-            return True
-        if jaccard_similarity(title, et) > jaccard_threshold:
-            return True
-    return False
-
-# 生成短網址
 def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
@@ -72,7 +42,6 @@ def shorten_url(long_url):
         print("⚠️ 短網址失敗：", e)
     return long_url
 
-# 根據標題分類新聞
 def classify_news(title):
     title = title.lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
@@ -80,7 +49,6 @@ def classify_news(title):
             return category
     return "其他"
 
-# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     taiwan_sources = [
         '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
@@ -93,7 +61,13 @@ def is_taiwan_news(source_name, link):
         return True
     return False
 
-# 擷取新聞
+def is_similar(title, known_titles_vecs):
+    vec = model.encode([title])
+    if not known_titles_vecs:
+        return False
+    sims = cosine_similarity(vec, known_titles_vecs)[0]
+    return np.max(sims) >= SIMILARITY_THRESHOLD
+
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
@@ -104,8 +78,8 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_titles = set()
-    processed_links = set()
+    known_titles = []
+    known_titles_vecs = []
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -127,34 +101,33 @@ def fetch_news():
             title = title_elem.text.strip()
             link = link_elem.text.strip()
             pubDate_str = pubDate_elem.text.strip()
+
+            if not title or title.startswith("Google ニュース"):
+                continue
+
             source_elem = item.find('source')
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
 
-            if not title or title.startswith("Google ニュース"):
-                continue
             if now - pub_datetime > timedelta(hours=24):
                 continue
             if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
-            if link in processed_links:
+            if is_similar(title, known_titles_vecs):
                 continue
-            if is_similar_to_existing(title, seen_titles):
-                continue
-
-            processed_links.add(link)
-            seen_titles.add(title)
 
             short_link = shorten_url(link)
             category = classify_news(title)
             formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
+            known_titles.append(title)
+            known_titles_vecs.append(model.encode(title))
+
     return classified_news
 
-# 發送分類訊息
 def send_message_by_category(news_by_category):
     max_length = 4000
     no_news_categories = []
@@ -174,7 +147,6 @@ def send_message_by_category(news_by_category):
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
 
-# 發送到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
@@ -194,12 +166,12 @@ def broadcast_message(message):
     print(f"📤 LINE 回傳狀態碼：{res.status_code}")
     print("📤 LINE 回傳內容：", res.text)
 
-# 主程式
 if __name__ == "__main__":
     news = fetch_news()
     if news:
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
