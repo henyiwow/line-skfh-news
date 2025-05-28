@@ -7,11 +7,12 @@ import requests
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import re
 
-# 語意模型初始化
+# ✅ 初始化語意模型
 model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
 
-# 設定門檻（相似度 >= 此值視為重複）
+# ✅ 相似度門檻
 SIMILARITY_THRESHOLD = 0.95
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -31,6 +32,14 @@ TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
+# ✅ 標題正規化
+def normalize_title(title):
+    title = re.sub(r'[｜|‧\-－–—~～].*$', '', title)  # 移除媒體後綴
+    title = re.sub(r'<[^>]+>', '', title)            # 移除 HTML 標籤
+    title = re.sub(r'[^\w\u4e00-\u9fff\s]', '', title)  # 移除非文字符號
+    title = re.sub(r'\s+', ' ', title)               # 多餘空白
+    return title.strip().lower()
+
 def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
@@ -43,7 +52,7 @@ def shorten_url(long_url):
     return long_url
 
 def classify_news(title):
-    title = title.lower()
+    title = normalize_title(title)
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw.lower() in title for kw in keywords):
             return category
@@ -62,7 +71,8 @@ def is_taiwan_news(source_name, link):
     return False
 
 def is_similar(title, known_titles_vecs):
-    vec = model.encode([title])
+    norm_title = normalize_title(title)
+    vec = model.encode([norm_title])
     if not known_titles_vecs:
         return False
     sims = cosine_similarity(vec, known_titles_vecs)[0]
@@ -78,7 +88,6 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    known_titles = []
     known_titles_vecs = []
 
     for rss_url in rss_urls:
@@ -101,7 +110,6 @@ def fetch_news():
             title = title_elem.text.strip()
             link = link_elem.text.strip()
             pubDate_str = pubDate_elem.text.strip()
-
             if not title or title.startswith("Google ニュース"):
                 continue
 
@@ -123,8 +131,9 @@ def fetch_news():
             formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
-            known_titles.append(title)
-            known_titles_vecs.append(model.encode(title))
+            # ✅ 新增向量（用正規化後標題）
+            norm_title = normalize_title(title)
+            known_titles_vecs.append(model.encode(norm_title))
 
     return classified_news
 
