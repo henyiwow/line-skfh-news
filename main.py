@@ -1,4 +1,5 @@
 import os
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
@@ -36,6 +37,20 @@ TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
+def clean_title(title):
+    title = title.lower()
+    title = re.sub(r'[^\w\s]', '', title)
+    title = re.sub(r'\d+', '', title)
+    title = re.sub(r'\s+', ' ', title).strip()
+    return title
+
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+def is_similar_to_existing(title, existing_titles, threshold=0.95):
+    cleaned = clean_title(title)
+    return any(similar(cleaned, clean_title(et)) > threshold for et in existing_titles)
+
 # 生成短網址
 def shorten_url(long_url):
     try:
@@ -56,7 +71,6 @@ def classify_news(title):
             return category
     return "其他"
 
-# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     taiwan_sources = [
         '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
@@ -69,7 +83,6 @@ def is_taiwan_news(source_name, link):
         return True
     return False
 
-# 擷取新聞
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
@@ -80,7 +93,7 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    processed_keys = set()
+    seen_links = set()
     seen_titles = []
 
     for rss_url in rss_urls:
@@ -117,15 +130,12 @@ def fetch_news():
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
-
-            # ✅ 重複新聞排除邏輯
-            dedup_key = f"{title[:30]}|{source_name}"
-            if dedup_key in processed_keys:
+            if link in seen_links:
                 continue
-            if any(SequenceMatcher(None, seen, title).ratio() > 0.9 for seen in seen_titles):
+            if is_similar_to_existing(title, seen_titles):
                 continue
 
-            processed_keys.add(dedup_key)
+            seen_links.add(link)
             seen_titles.append(title)
 
             short_link = shorten_url(link)
@@ -135,7 +145,6 @@ def fetch_news():
 
     return classified_news
 
-# 發送分類訊息
 def send_message_by_category(news_by_category):
     max_length = 4000
     no_news_categories = []
@@ -155,7 +164,6 @@ def send_message_by_category(news_by_category):
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
 
-# 發送到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
