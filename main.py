@@ -1,11 +1,11 @@
 import os
-import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
-import requests
 from difflib import SequenceMatcher
+import re
+import requests
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -37,19 +37,28 @@ TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
+# 清洗標題（去除符號與多餘空白）
 def clean_title(title):
-    title = title.lower()
-    title = re.sub(r'[^\w\s]', '', title)
-    title = re.sub(r'\d+', '', title)
+    title = re.sub(r'[^\w\s]', '', title.lower())
     title = re.sub(r'\s+', ' ', title).strip()
     return title
 
-def similar(a, b):
-    return SequenceMatcher(None, a, b).ratio()
+# Jaccard 相似度比對
+def jaccard_similarity(a, b):
+    set_a = set(clean_title(a).split())
+    set_b = set(clean_title(b).split())
+    if not set_a or not set_b:
+        return 0
+    return len(set_a & set_b) / len(set_a | set_b)
 
-def is_similar_to_existing(title, existing_titles, threshold=0.95):
-    cleaned = clean_title(title)
-    return any(similar(cleaned, clean_title(et)) > threshold for et in existing_titles)
+# 是否與已存在標題相似
+def is_similar_to_existing(title, existing_titles, seq_threshold=0.95, jaccard_threshold=0.85):
+    for et in existing_titles:
+        if SequenceMatcher(None, clean_title(title), clean_title(et)).ratio() > seq_threshold:
+            return True
+        if jaccard_similarity(title, et) > jaccard_threshold:
+            return True
+    return False
 
 # 生成短網址
 def shorten_url(long_url):
@@ -71,6 +80,7 @@ def classify_news(title):
             return category
     return "其他"
 
+# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     taiwan_sources = [
         '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
@@ -83,6 +93,7 @@ def is_taiwan_news(source_name, link):
         return True
     return False
 
+# 擷取新聞
 def fetch_news():
     rss_urls = [
         "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
@@ -93,8 +104,8 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    seen_links = set()
-    seen_titles = []
+    seen_titles = set()
+    processed_links = set()
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -116,27 +127,25 @@ def fetch_news():
             title = title_elem.text.strip()
             link = link_elem.text.strip()
             pubDate_str = pubDate_elem.text.strip()
-
-            if not title or title.startswith("Google ニュース"):
-                continue
-
             source_elem = item.find('source')
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
 
+            if not title or title.startswith("Google ニュース"):
+                continue
             if now - pub_datetime > timedelta(hours=24):
                 continue
             if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
-            if link in seen_links:
+            if link in processed_links:
                 continue
             if is_similar_to_existing(title, seen_titles):
                 continue
 
-            seen_links.add(link)
-            seen_titles.append(title)
+            processed_links.add(link)
+            seen_titles.add(title)
 
             short_link = shorten_url(link)
             category = classify_news(title)
@@ -145,6 +154,7 @@ def fetch_news():
 
     return classified_news
 
+# 發送分類訊息
 def send_message_by_category(news_by_category):
     max_length = 4000
     no_news_categories = []
@@ -164,6 +174,7 @@ def send_message_by_category(news_by_category):
         content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
         broadcast_message(f"{title}\n\n{content}")
 
+# 發送到 LINE
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
@@ -190,4 +201,5 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
