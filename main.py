@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
 import requests
+from difflib import SequenceMatcher
 
 # 設定 ACCESS_TOKEN
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
@@ -55,7 +56,7 @@ def classify_news(title):
             return category
     return "其他"
 
-# ✅ 判斷是否為台灣新聞（保留模糊比對，排除香港經濟日報）
+# 判斷是否為台灣新聞
 def is_taiwan_news(source_name, link):
     taiwan_sources = [
         '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
@@ -79,7 +80,8 @@ def fetch_news():
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    processed_links = set()
+    processed_keys = set()
+    seen_titles = []
 
     for rss_url in rss_urls:
         res = requests.get(rss_url)
@@ -109,17 +111,22 @@ def fetch_news():
             source_name = source_elem.text.strip() if source_elem is not None else "未標示"
             pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
 
-            # ✅ 只保留 24 小時內新聞
             if now - pub_datetime > timedelta(hours=24):
                 continue
-
             if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                 continue
             if not is_taiwan_news(source_name, link):
                 continue
-            if link in processed_links:
+
+            # ✅ 重複新聞排除邏輯
+            dedup_key = f"{title[:30]}|{source_name}"
+            if dedup_key in processed_keys:
                 continue
-            processed_links.add(link)
+            if any(SequenceMatcher(None, seen, title).ratio() > 0.9 for seen in seen_titles):
+                continue
+
+            processed_keys.add(dedup_key)
+            seen_titles.append(title)
 
             short_link = shorten_url(link)
             category = classify_news(title)
@@ -175,3 +182,4 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
