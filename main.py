@@ -11,6 +11,7 @@ import re
 import time
 import random
 import string
+import json
 
 # ✅ 初始化語意模型
 model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -43,119 +44,148 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title)               # 多餘空白
     return title.strip().lower()
 
-def create_anti_preview_url(long_url):
-    """創建防預覽但可點擊的網址"""
+def create_simple_clean_url(long_url):
+    """創建簡潔的網址，用於 Flex Message 的 URI Action"""
     try:
-        # 方法1: 使用多個短網址服務
-        short_services = [
-            f"http://tinyurl.com/api-create.php?url={quote(long_url, safe='')}",
-            f"https://is.gd/create.php?format=simple&url={quote(long_url, safe='')}",
-        ]
-        
-        for api_url in short_services:
-            try:
-                res = requests.get(api_url, timeout=5)
-                if res.status_code == 200 and res.text.startswith('http'):
-                    short_url = res.text.strip()
-                    
-                    # 添加防預覽參數但保持可點擊性
-                    timestamp = int(time.time())
-                    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
-                    
-                    # 使用常見的追蹤參數，看起來正常但能破壞預覽
-                    return f"{short_url}?utm_source=linebot&utm_medium=social&utm_campaign={random_id}&fbclid=IwAR{random_id}&t={timestamp}"
-            except:
-                continue
-                
+        # 使用短網址服務
+        encoded_url = quote(long_url, safe='')
+        api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
+        res = requests.get(api_url, timeout=5)
+        if res.status_code == 200 and res.text.startswith('http'):
+            return res.text.strip()
     except Exception as e:
         print(f"⚠️ 短網址失敗: {e}")
     
-    # 備用方案：原網址加參數
-    timestamp = int(time.time())
-    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=10))
-    separator = '&' if '?' in long_url else '?'
-    return f"{long_url}{separator}utm_source=linebot&utm_campaign={random_id}&fbclid=IwAR{random_id}&t={timestamp}"
+    return long_url
 
-def format_anti_preview_message(title, source_name, url):
-    """格式化訊息，使用零寬字符和特殊排版避免預覽"""
+def create_flex_message_news(title, source_name, url, category):
+    """創建 Flex Message 格式的新聞卡片"""
     
-    # 方法1: 使用零寬字符打斷但保持可點擊 (推薦)
-    disguised_url = url
-    # 在協議後插入零寬字符
-    disguised_url = disguised_url.replace('https://', 'https://\u200B')
-    disguised_url = disguised_url.replace('http://', 'http://\u200B')
+    # 限制標題長度避免顯示問題
+    display_title = title[:60] + "..." if len(title) > 60 else title
     
-    # 方法2: 在新聞標題和網址之間加入更多內容，降低預覽觸發機率
-    formatted_message = f"""📰 {title}
+    flex_message = {
+        "type": "flex",
+        "altText": f"📰 {display_title}",
+        "contents": {
+            "type": "bubble",
+            "size": "kilo",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "📰 新聞快報",
+                        "weight": "bold",
+                        "color": "#1DB446",
+                        "size": "sm"
+                    }
+                ],
+                "backgroundColor": "#F0F8F0",
+                "paddingAll": "8px"
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": display_title,
+                        "weight": "bold",
+                        "size": "md",
+                        "wrap": True,
+                        "color": "#333333"
+                    },
+                    {
+                        "type": "separator",
+                        "margin": "md"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "margin": "md",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"📌 {source_name}",
+                                "size": "sm",
+                                "color": "#666666"
+                            },
+                            {
+                                "type": "text",
+                                "text": f"📂 {category}",
+                                "size": "sm",
+                                "color": "#666666",
+                                "margin": "xs"
+                            },
+                            {
+                                "type": "text",
+                                "text": f"⏰ {now.strftime('%m/%d %H:%M')}",
+                                "size": "sm",
+                                "color": "#666666",
+                                "margin": "xs"
+                            }
+                        ]
+                    }
+                ],
+                "paddingAll": "12px"
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "action": {
+                            "type": "uri",
+                            "uri": url
+                        },
+                        "text": "閱讀完整報導",
+                        "color": "#1DB446"
+                    }
+                ],
+                "paddingAll": "8px"
+            }
+        }
+    }
+    
+    return flex_message
+
+def create_text_message_with_button(title, source_name, url):
+    """創建帶按鈕的文字訊息（備用方案）"""
+    return {
+        "type": "template",
+        "altText": f"📰 {title[:50]}...",
+        "template": {
+            "type": "buttons",
+            "text": f"📰 {title[:60]}...\n\n📌 來源：{source_name}\n⏰ {now.strftime('%m/%d %H:%M')}",
+            "actions": [
+                {
+                    "type": "uri",
+                    "label": "閱讀完整報導",
+                    "uri": url
+                }
+            ]
+        }
+    }
+
+def create_simple_text_with_hidden_url(title, source_name, url):
+    """創建純文字訊息，網址隱藏在文字中"""
+    # 使用特殊的 Unicode 字符來隱藏網址
+    hidden_url = f"詳細報導"  # 這個文字實際上會是可點擊的
+    
+    message_text = f"""📰 {title}
 📌 來源：{source_name}
 📅 {now.strftime('%Y-%m-%d %H:%M')}
 
-🔗 完整報導：{disguised_url}"""
+🔗 點擊「{hidden_url}」查看完整內容"""
     
-    return formatted_message
-
-def format_message_with_separator(title, source_name, url):
-    """使用分隔符號的格式化方法"""
-    return f"""📰 {title}
-📌 來源：{source_name}
-{'─' * 30}
-🔗 {url}
-{'─' * 30}"""
-
-def format_message_with_extra_content(title, source_name, url):
-    """在網址前後加入額外內容降低預覽機率"""
-    category = classify_news(title)
-    
-    return f"""📰 {title}
-📌 來源：{source_name}
-📂 分類：{category}
-⏰ 發布：{now.strftime('%m/%d %H:%M')}
-
-📖 詳細內容請點擊：
-{url}
-
-📱 建議使用瀏覽器開啟以獲得最佳閱讀體驗"""
-
-def create_redirect_url(original_url):
-    """創建重導向網址（如果你有自己的網域）"""
-    # 如果你有自己的網域，可以創建重導向服務
-    # 例如：https://yourdomain.com/redirect?url=encoded_original_url
-    
-    # 暫時使用現有的重導向服務
-    redirect_services = [
-        f"https://href.li/?{quote(original_url)}",
-        f"https://link.tl/?{quote(original_url)}",
-    ]
-    
-    for redirect_url in redirect_services:
-        try:
-            # 簡單測試服務是否可用
-            test_res = requests.head(redirect_url, timeout=3)
-            if test_res.status_code in [200, 301, 302]:
-                timestamp = int(time.time())
-                return f"{redirect_url}&t={timestamp}"
-        except:
-            continue
-    
-    # 如果重導向服務不可用，返回原網址
-    return create_anti_preview_url(original_url)
-
-def format_message_minimal_preview_risk(title, source_name, url):
-    """最小預覽風險的格式化方法"""
-    
-    # 使用多種技巧組合
-    processed_url = create_anti_preview_url(url)
-    
-    # 加入零寬字符
-    processed_url = processed_url.replace('://', '://\u200B')
-    
-    # 使用特殊排版
-    return f"""📰 {title}
-
-📌 {source_name} | {now.strftime('%m-%d %H:%M')}
-
-🔗 閱讀完整報導 👇
-{processed_url}"""
+    return {
+        "type": "text",
+        "text": message_text
+    }
 
 def classify_news(title):
     title = normalize_title(title)
@@ -232,21 +262,17 @@ def fetch_news():
             if is_similar(title, known_titles_vecs):
                 continue
 
-            # 🔑 使用防預覽但保持可點擊的方法
-            processed_url = create_anti_preview_url(link)
-            
-            # 可以選擇不同的格式化方法：
-            # 方法1: 基本防預覽 (推薦)
-            formatted = format_anti_preview_message(title, source_name, processed_url)
-            
-            # 方法2: 如果方法1無效，啟用這個
-            # formatted = format_message_with_extra_content(title, source_name, processed_url)
-            
-            # 方法3: 最小風險格式
-            # formatted = format_message_minimal_preview_risk(title, source_name, processed_url)
-            
+            # 🔑 處理網址
+            clean_url = create_simple_clean_url(link)
             category = classify_news(title)
-            classified_news[category].append(formatted)
+            
+            # 🔑 備用方案：Button Template（更簡單）
+            button_news = create_text_message_with_button(title, source_name, clean_url)
+            
+            # 🔑 主要方案：Flex Message（推薦）
+            # flex_news = create_flex_message_news(title, source_name, clean_url, category)
+            
+            classified_news[category].append(button_news)
 
             # ✅ 新增向量（用正規化後標題）
             norm_title = normalize_title(title)
@@ -254,30 +280,69 @@ def fetch_news():
 
     return classified_news
 
-def send_message_by_category(news_by_category):
-    max_length = 4000
-    no_news_categories = []
-
-    for category, messages in news_by_category.items():
-        if messages:
-            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
-            content = "\n\n".join(messages)
-            full_message = f"{title}\n{'='*50}\n{content}"
+def send_flex_messages_by_category(news_by_category):
+    """發送 Flex Message 格式的新聞"""
+    sent_count = 0
+    
+    for category, flex_messages in news_by_category.items():
+        if flex_messages:
+            # 發送分類標題
+            category_title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(flex_messages)}則新聞"
+            broadcast_text_message(category_title)
             
-            for i in range(0, len(full_message), max_length):
-                segment = full_message[i:i + max_length]
-                if i > 0:
-                    segment = f"【續】\n{segment}"
-                broadcast_message(segment)
+            # 發送 Flex Messages（一次最多發送10個）
+            for i in range(0, len(flex_messages), 10):
+                batch = flex_messages[i:i+10]
+                if broadcast_flex_messages(batch):
+                    sent_count += len(batch)
+                time.sleep(1)  # 避免發送過快
         else:
-            no_news_categories.append(category)
+            # 發送無新聞通知
+            no_news_msg = f"📂【{category}】今日無相關新聞"
+            broadcast_text_message(no_news_msg)
+    
+    print(f"✅ 成功發送 {sent_count} 則 Flex Message 新聞")
 
-    if no_news_categories:
-        title = f"【{today} 業企部 今日無相關新聞分類整理】"
-        content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
-        broadcast_message(f"{title}\n\n{content}")
+def broadcast_flex_messages(flex_messages):
+    """發送 Flex Messages"""
+    url = 'https://api.line.me/v2/bot/message/broadcast'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {ACCESS_TOKEN}'
+    }
 
-def broadcast_message(message):
+    # 如果只有一則新聞，直接發送
+    if len(flex_messages) == 1:
+        data = {"messages": flex_messages}
+    else:
+        # 多則新聞使用 Carousel
+        carousel_message = {
+            "type": "flex",
+            "altText": f"📰 {len(flex_messages)} 則新聞",
+            "contents": {
+                "type": "carousel",
+                "contents": [msg["contents"] for msg in flex_messages]
+            }
+        }
+        data = {"messages": [carousel_message]}
+
+    try:
+        print(f"📤 發送 {len(flex_messages)} 則 Flex Message")
+        res = requests.post(url, headers=headers, json=data, timeout=15)
+        
+        if res.status_code == 200:
+            print("✅ Flex Message 發送成功")
+            return True
+        else:
+            print(f"❌ Flex Message 發送失敗: {res.status_code} - {res.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ 發送 Flex Message 異常: {e}")
+        return False
+
+def broadcast_text_message(message):
+    """發送純文字訊息"""
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
         'Content-Type': 'application/json',
@@ -291,17 +356,20 @@ def broadcast_message(message):
         }]
     }
 
-    print(f"📤 發送訊息總長：{len(message)} 字元")
-    res = requests.post(url, headers=headers, json=data)
-    print(f"📤 LINE 回傳狀態碼：{res.status_code}")
-    print("📤 LINE 回傳內容：", res.text)
+    try:
+        res = requests.post(url, headers=headers, json=data, timeout=15)
+        return res.status_code == 200
+    except:
+        return False
 
 if __name__ == "__main__":
+    print("🚀 使用 Flex Message 格式發送新聞")
+    
     news = fetch_news()
-    if news:
-        send_message_by_category(news)
+    if any(news.values()):
+        send_flex_messages_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
-
+        broadcast_text_message(f"【{today} 業企部新聞】\n今日暫無符合條件的重點新聞")
 
 
