@@ -4,345 +4,159 @@ from datetime import datetime, timedelta, timezone
 import email.utils
 from urllib.parse import quote
 import requests
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
-import time
-import hashlib
 
-# 嘗試載入 AI 模型，如果失敗則跳過
-try:
-    from sentence_transformers import SentenceTransformer
-    from sklearn.metrics.pairwise import cosine_similarity
-    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-    print("✅ AI 模型載入成功")
-    USE_AI_SIMILARITY = True
-except Exception as e:
-    print(f"⚠️ AI 模型載入失敗，使用基礎去重: {e}")
-    model = None
-    USE_AI_SIMILARITY = False
+# ✅ 初始化語意模型
+model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
 
-# 基本設定
+# ✅ 相似度門檻
+SIMILARITY_THRESHOLD = 0.95
+
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
-DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
-if ACCESS_TOKEN:
-    print(f"✅ Access Token 已設定，前10碼：{ACCESS_TOKEN[:10]}")
-else:
-    print("❌ ACCESS_TOKEN 環境變數未設定")
-
-# 分類關鍵字 - 放寬條件
 CATEGORY_KEYWORDS = {
-    "新光金控": ["新光金", "新光人壽", "新壽", "吳東進", "新光", "SKL"],
-    "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮", "台新", "Taishin"],
-    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金", "第一金", "元大金", "銀行", "金融"],
-    "保險": ["保險", "壽險", "健康險", "意外險", "人壽", "產險", "車險", "保單", "理賠"],
+    "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
+    "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
+    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"],
+    "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
     "其他": []
 }
 
-# 減少排除關鍵字
-EXCLUDED_KEYWORDS = ['保險套', '避孕套']
+EXCLUDED_KEYWORDS = ['保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險']
 
 TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
+# ✅ 標題正規化
 def normalize_title(title):
-    """簡化的標題正規化"""
-    if not title:
-        return ""
-    title = re.sub(r'<[^>]+>', '', title)
-    title = re.sub(r'\s+', ' ', title)
-    return title.strip()
+    title = re.sub(r'[｜|‧\-－–—~～].*$', '', title)  # 移除媒體後綴
+    title = re.sub(r'<[^>]+>', '', title)            # 移除 HTML 標籤
+    title = re.sub(r'[^\w\u4e00-\u9fff\s]', '', title)  # 移除非文字符號
+    title = re.sub(r'\s+', ' ', title)               # 多餘空白
+    return title.strip().lower()
 
-def create_short_url(long_url):
-    """創建短網址"""
+def shorten_url(long_url):
     try:
         encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
-        res = requests.get(api_url, timeout=8)
-        if res.status_code == 200 and res.text.startswith('http'):
+        res = requests.get(api_url, timeout=5)
+        if res.status_code == 200:
             return res.text.strip()
     except Exception as e:
-        if DEBUG_MODE:
-            print(f"⚠️ 短網址失敗: {e}")
-    
+        print("⚠️ 短網址失敗：", e)
     return long_url
 
-def simple_similarity_check(title1, title2):
-    """簡單的文字相似度檢查"""
-    words1 = set(normalize_title(title1).lower().split())
-    words2 = set(normalize_title(title2).lower().split())
-    if not words1 or not words2:
-        return False
-    
-    intersection = words1.intersection(words2)
-    union = words1.union(words2)
-    similarity = len(intersection) / len(union) if union else 0
-    return similarity > 0.8
-
 def classify_news(title):
-    """新聞分類"""
-    title_lower = title.lower()
+    title = normalize_title(title)
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if category == "其他":
-            continue
-        for keyword in keywords:
-            if keyword.lower() in title_lower:
-                if DEBUG_MODE:
-                    print(f"📂 分類為 [{category}]: {keyword} 在 {title[:50]}")
-                return category
+        if any(kw.lower() in title for kw in keywords):
+            return category
     return "其他"
 
 def is_taiwan_news(source_name, link):
-    """判斷是否為台灣新聞 - 大幅放寬"""
-    # 如果是 Google News 的連結，基本上都接受
-    if 'news.google.com' in link:
-        return True
-    
     taiwan_sources = [
-        '工商', '中國時報', '經濟', '三立', '自由', '聯合',
-        '鏡週刊', '雅虎', '鉅亨', '中時', 'Ettoday', 'ETtoday',
-        '天下', '遠見', '商業周刊', '今周刊', 'MoneyDJ',
-        '風傳媒', '新頭殼', '中央社', 'NOWnews', 'Yahoo',
-        '財訊', 'Smart', '現代保險', '保險'
+        '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
+        '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網','Ettoday新聞雲',
+        '天下雜誌', '奇摩新聞', '《現代保險》雜誌','遠見雜誌'
     ]
-    
-    for taiwan_source in taiwan_sources:
-        if taiwan_source in source_name:
-            return True
-    
-    if '.tw' in link or 'taiwan' in link.lower():
+    if any(taiwan_source in source_name for taiwan_source in taiwan_sources) and "香港經濟日報" not in source_name:
         return True
-    
-    # 預設接受，除非明確是國外媒體
-    exclude_sources = ['香港', '中國', '美國', '日本', '韓國', 'CNN', 'BBC']
-    for exclude in exclude_sources:
-        if exclude in source_name:
-            return False
-    
-    return True
+    if '.tw' in link:
+        return True
+    return False
 
-def create_button_template_message(title, source_name, url, category):
-    """創建 Button Template 訊息"""
-    # 限制標題長度（LINE Button Template 限制）
-    display_title = title[:80] + "..." if len(title) > 80 else title
-    
-    # 創建顯示文字
-    message_text = f"📰 {display_title}\n\n📌 來源：{source_name}\n📂 分類：{category}\n⏰ {now.strftime('%m/%d %H:%M')}"
-    
-    # 確保文字不超過 LINE 限制
-    if len(message_text) > 160:
-        # 縮短標題
-        max_title_length = 160 - len(f"\n\n📌 來源：{source_name}\n📂 分類：{category}\n⏰ {now.strftime('%m/%d %H:%M')}")
-        display_title = title[:max_title_length-10] + "..."
-        message_text = f"📰 {display_title}\n\n📌 來源：{source_name}\n📂 分類：{category}\n⏰ {now.strftime('%m/%d %H:%M')}"
-    
-    return {
-        "type": "template",
-        "altText": f"📰 {title[:50]}...",
-        "template": {
-            "type": "buttons",
-            "text": message_text,
-            "actions": [
-                {
-                    "type": "uri",
-                    "label": "閱讀完整報導",
-                    "uri": url
-                }
-            ]
-        }
-    }
+def is_similar(title, known_titles_vecs):
+    norm_title = normalize_title(title)
+    vec = model.encode([norm_title])
+    if not known_titles_vecs:
+        return False
+    sims = cosine_similarity(vec, known_titles_vecs)[0]
+    return np.max(sims) >= SIMILARITY_THRESHOLD
 
 def fetch_news():
-    """主要新聞抓取函數 - 修正版本"""
-    print("🚀 開始抓取新聞...")
-    
-    # 使用更簡單直接的 RSS URLs
     rss_urls = [
-        "https://news.google.com/rss/search?q=新光金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=台新金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=金控&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=壽險&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=保險&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=壽險+OR+健康險+OR+意外險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
-    processed_titles = []  # 簡單去重
-    stats = {'total': 0, 'processed': 0, 'filtered': 0, 'duplicates': 0}
+    known_titles_vecs = []
 
-    for i, rss_url in enumerate(rss_urls, 1):
-        try:
-            print(f"📡 處理 RSS 來源 {i}/{len(rss_urls)}")
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            res = requests.get(rss_url, timeout=20, headers=headers)
-            
-            if res.status_code != 200:
-                print(f"⚠️ RSS 回應異常: {res.status_code}")
-                continue
-
-            print(f"✅ RSS 回應成功，內容長度: {len(res.content)}")
-            
-            try:
-                root = ET.fromstring(res.content)
-            except ET.ParseError as e:
-                print(f"❌ XML 解析失敗: {e}")
-                continue
-            
-            items = root.findall(".//item")
-            stats['total'] += len(items)
-            
-            print(f"✅ 從來源 {i} 找到 {len(items)} 筆新聞項目")
-
-            for j, item in enumerate(items):
-                try:
-                    title_elem = item.find('title')
-                    link_elem = item.find('link')
-                    pubDate_elem = item.find('pubDate')
-                    
-                    if not all([title_elem, link_elem]):
-                        continue
-
-                    title = title_elem.text.strip() if title_elem.text else ""
-                    link = link_elem.text.strip() if link_elem.text else ""
-                    
-                    if not title or not link:
-                        continue
-                    
-                    if title.startswith("Google ニュース") or "Google News" in title:
-                        continue
-
-                    source_elem = item.find('source')
-                    source_name = source_elem.text.strip() if source_elem is not None and source_elem.text else "未標示來源"
-                    
-                    if DEBUG_MODE:
-                        print(f"  處理第 {j+1} 筆: {title[:40]}... | 來源: {source_name}")
-                    
-                    # 時間檢查 - 放寬到48小時
-                    if pubDate_elem is not None and pubDate_elem.text:
-                        try:
-                            pub_datetime = email.utils.parsedate_to_datetime(pubDate_elem.text).astimezone(TW_TZ)
-                            if now - pub_datetime > timedelta(hours=48):
-                                stats['filtered'] += 1
-                                continue
-                        except:
-                            pass  # 如果時間解析失敗，就不做時間過濾
-                    
-                    # 排除關鍵字檢查
-                    if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
-                        stats['filtered'] += 1
-                        continue
-                    
-                    # 台灣新聞檢查
-                    if not is_taiwan_news(source_name, link):
-                        stats['filtered'] += 1
-                        continue
-                    
-                    # 簡單去重檢查
-                    is_duplicate = False
-                    for processed_title in processed_titles:
-                        if simple_similarity_check(title, processed_title):
-                            is_duplicate = True
-                            break
-                    
-                    if is_duplicate:
-                        stats['duplicates'] += 1
-                        continue
-                    
-                    # 處理網址
-                    clean_url = create_short_url(link)
-                    category = classify_news(title)
-                    
-                    # 創建 Button Template 訊息
-                    button_message = create_button_template_message(title, source_name, clean_url, category)
-                    classified_news[category].append(button_message)
-                    
-                    # 記錄已處理的標題
-                    processed_titles.append(title)
-                    stats['processed'] += 1
-                    
-                    if DEBUG_MODE:
-                        print(f"    ✅ 成功處理: [{category}] {title[:30]}...")
-
-                except Exception as e:
-                    print(f"❌ 處理單筆新聞失敗: {e}")
-                    continue
-
-        except Exception as e:
-            print(f"❌ 處理 RSS 來源 {i} 失敗: {e}")
+    for rss_url in rss_urls:
+        res = requests.get(rss_url)
+        print(f"✅ 來源: {rss_url} 回應狀態：{res.status_code}")
+        if res.status_code != 200:
             continue
 
-    # 輸出統計
-    print(f"""
-📊 新聞處理統計:
-   總抓取: {stats['total']} 筆
-   成功處理: {stats['processed']} 筆
-   重複過濾: {stats['duplicates']} 筆
-   其他過濾: {stats['filtered']} 筆
-   
-   分類統計:""")
-    
-    for category, messages in classified_news.items():
-        print(f"   📂 {category}: {len(messages)} 筆")
-    
+        root = ET.fromstring(res.content)
+        items = root.findall(".//item")
+        print(f"✅ 從 {rss_url} 抓到 {len(items)} 筆新聞")
+
+        for item in items:
+            title_elem = item.find('title')
+            link_elem = item.find('link')
+            pubDate_elem = item.find('pubDate')
+            if title_elem is None or link_elem is None or pubDate_elem is None:
+                continue
+
+            title = title_elem.text.strip()
+            link = link_elem.text.strip()
+            pubDate_str = pubDate_elem.text.strip()
+            if not title or title.startswith("Google ニュース"):
+                continue
+
+            source_elem = item.find('source')
+            source_name = source_elem.text.strip() if source_elem is not None else "未標示"
+            pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
+
+            if now - pub_datetime > timedelta(hours=24):
+                continue
+            if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
+                continue
+            if not is_taiwan_news(source_name, link):
+                continue
+            if is_similar(title, known_titles_vecs):
+                continue
+
+            short_link = shorten_url(link)
+            category = classify_news(title)
+            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            classified_news[category].append(formatted)
+
+            # ✅ 新增向量（用正規化後標題）
+            norm_title = normalize_title(title)
+            known_titles_vecs.append(model.encode(norm_title))
+
     return classified_news
 
-def send_button_template_messages(news_by_category):
-    """發送 Button Template 訊息"""
-    if not ACCESS_TOKEN:
-        print("❌ ACCESS_TOKEN 未設定，無法發送訊息")
-        return
-    
-    sent_count = 0
-    
+def send_message_by_category(news_by_category):
+    max_length = 4000
+    no_news_categories = []
+
     for category, messages in news_by_category.items():
         if messages:
-            # 發送分類標題
-            category_title = f"【{today} 業企部 今日【{category}】重點新聞】共 {len(messages)} 則"
-            broadcast_text_message(category_title)
-            
-            # 逐一發送 Button Template 訊息
-            for message in messages:
-                if broadcast_template_message(message):
-                    sent_count += 1
-                time.sleep(0.5)  # 避免發送過快
+            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
+            content = "\n".join(messages)
+            full_message = f"{title}\n\n{content}"
+            for i in range(0, len(full_message), max_length):
+                broadcast_message(full_message[i:i + max_length])
         else:
-            # 發送無新聞通知
-            no_news_msg = f"📂【{category}】今日無相關新聞"
-            broadcast_text_message(no_news_msg)
-    
-    print(f"✅ 成功發送 {sent_count} 則新聞")
+            no_news_categories.append(category)
 
-def broadcast_template_message(template_message):
-    """發送 Template 訊息"""
-    url = 'https://api.line.me/v2/bot/message/broadcast'
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {ACCESS_TOKEN}'
-    }
+    if no_news_categories:
+        title = f"【{today} 業企部 今日無相關新聞分類整理】"
+        content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
+        broadcast_message(f"{title}\n\n{content}")
 
-    data = {"messages": [template_message]}
-
-    try:
-        res = requests.post(url, headers=headers, json=data, timeout=15)
-        
-        if res.status_code == 200:
-            if DEBUG_MODE:
-                print("✅ Template 訊息發送成功")
-            return True
-        else:
-            print(f"❌ Template 訊息發送失敗: {res.status_code} - {res.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ 發送 Template 訊息異常: {e}")
-        return False
-
-def broadcast_text_message(message):
-    """發送純文字訊息"""
+def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
     headers = {
         'Content-Type': 'application/json',
@@ -356,50 +170,17 @@ def broadcast_text_message(message):
         }]
     }
 
-    try:
-        res = requests.post(url, headers=headers, json=data, timeout=15)
-        if res.status_code == 200:
-            if DEBUG_MODE:
-                print("✅ 文字訊息發送成功")
-            return True
-        else:
-            print(f"❌ 文字訊息發送失敗: {res.status_code}")
-            return False
-    except Exception as e:
-        print(f"❌ 發送文字訊息異常: {e}")
-        return False
+    print(f"📤 發送訊息總長：{len(message)} 字元")
+    res = requests.post(url, headers=headers, json=data)
+    print(f"📤 LINE 回傳狀態碼：{res.status_code}")
+    print("📤 LINE 回傳內容：", res.text)
 
 if __name__ == "__main__":
-    start_time = time.time()
-    print(f"🚀 新聞爬取系統啟動 (Button Template 模式) - {now}")
-    
-    # 測試模式
-    if os.getenv('DEBUG_MODE', 'false').lower() == 'true':
-        DEBUG_MODE = True
-        print("🔍 除錯模式已啟用")
-    
-    try:
-        news = fetch_news()
-        
-        # 檢查是否有新聞
-        total_news = sum(len(msgs) for msgs in news.values())
-        
-        if total_news > 0:
-            print(f"📨 準備發送 {total_news} 則新聞")
-            send_button_template_messages(news)
-        else:
-            print("⚠️ 沒有符合條件的新聞")
-            if ACCESS_TOKEN:
-                broadcast_text_message(f"【{today} 業企部新聞】\n今日暫無符合條件的重點新聞")
-        
-        elapsed = time.time() - start_time
-        print(f"✅ 系統執行完成，耗時 {elapsed:.1f} 秒")
-        
-    except Exception as e:
-        print(f"❌ 系統執行失敗: {e}")
-        if ACCESS_TOKEN:
-            broadcast_text_message(f"【系統通知】\n新聞爬取系統執行異常")
-        import traceback
-        traceback.print_exc()
+    news = fetch_news()
+    if news:
+        send_message_by_category(news)
+    else:
+        print("⚠️ 沒有符合條件的新聞，不發送。")
+
 
 
