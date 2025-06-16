@@ -9,6 +9,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
 import time
+import random
+import string
 
 # ✅ 初始化語意模型
 model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -41,22 +43,36 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title)               # 多餘空白
     return title.strip().lower()
 
-def shorten_url(long_url):
-    """修改後的短網址函數 - 避免 LINE 預覽卡片"""
+def create_no_preview_url(long_url):
+    """最有效的防預覽網址生成"""
     try:
+        # 使用 TinyURL
         encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=5)
+        
         if res.status_code == 200 and res.text.startswith('http'):
             short_url = res.text.strip()
-            # 🔑 關鍵：加上時間戳破壞 LINE 預覽機制
-            return f"{short_url}?t={int(time.time())}"
+            # 方法1: 加上強力破壞參數
+            timestamp = int(time.time())
+            random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+            return f"{short_url}?utm_source=bot&utm_medium=line&utm_campaign={random_id}&cache_bust={timestamp}&nopreview=1"
     except Exception as e:
-        print("⚠️ 短網址失敗：", e)
+        print("⚠️ TinyURL 失敗：", e)
     
-    # 備用方案：直接在原網址加上破壞預覽的參數
+    # 備用方案: 原網址加多重參數
+    timestamp = int(time.time())
+    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
     separator = '&' if '?' in long_url else '?'
-    return f"{long_url}{separator}nopreview=1&t={int(time.time())}"
+    return f"{long_url}{separator}utm_source=newsbot&ref={random_id}&t={timestamp}&nopreview=true&cache={timestamp}"
+
+def format_message_to_avoid_preview(title, source_name, url):
+    """格式化訊息避免觸發預覽"""
+    # 移除 https:// 前綴並使用 emoji 標示
+    clean_url = url.replace('https://', '').replace('http://', '')
+    formatted_url = f"🌐 {clean_url}"
+    
+    return f"📰 {title}\n📌 來源：{source_name}\n{formatted_url}"
 
 def classify_news(title):
     title = normalize_title(title)
@@ -133,11 +149,11 @@ def fetch_news():
             if is_similar(title, known_titles_vecs):
                 continue
 
-            short_link = shorten_url(link)  # 使用修改後的函數
-            category = classify_news(title)
+            # 🔑 使用推薦方案處理網址和格式化
+            no_preview_url = create_no_preview_url(link)
+            formatted = format_message_to_avoid_preview(title, source_name, no_preview_url)
             
-            # 🔑 關鍵修改：改變顯示格式避免 LINE 自動預覽
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 詳細內容：{short_link}"
+            category = classify_news(title)
             classified_news[category].append(formatted)
 
             # ✅ 新增向量（用正規化後標題）
@@ -153,10 +169,15 @@ def send_message_by_category(news_by_category):
     for category, messages in news_by_category.items():
         if messages:
             title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
-            content = "\n".join(messages)
-            full_message = f"{title}\n\n{content}"
+            content = "\n\n".join(messages)  # 使用雙換行分隔新聞
+            full_message = f"{title}\n{'='*50}\n{content}"
+            
+            # 分段發送長訊息
             for i in range(0, len(full_message), max_length):
-                broadcast_message(full_message[i:i + max_length])
+                segment = full_message[i:i + max_length]
+                if i > 0:  # 如果是續集，加上標示
+                    segment = f"【續】\n{segment}"
+                broadcast_message(segment)
         else:
             no_news_categories.append(category)
 
