@@ -43,150 +43,119 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title)               # 多餘空白
     return title.strip().lower()
 
-def create_super_broken_url(long_url):
-    """創建超強打斷的網址，避免任何預覽可能"""
+def create_anti_preview_url(long_url):
+    """創建防預覽但可點擊的網址"""
     try:
-        # 使用多個短網址服務
-        services = [
+        # 方法1: 使用多個短網址服務
+        short_services = [
             f"http://tinyurl.com/api-create.php?url={quote(long_url, safe='')}",
             f"https://is.gd/create.php?format=simple&url={quote(long_url, safe='')}",
-            f"http://v.gd/create.php?format=simple&url={quote(long_url, safe='')}"
         ]
         
-        for api_url in services:
+        for api_url in short_services:
             try:
                 res = requests.get(api_url, timeout=5)
                 if res.status_code == 200 and res.text.startswith('http'):
                     short_url = res.text.strip()
-                    # 添加超強破壞參數
+                    
+                    # 添加防預覽參數但保持可點擊性
                     timestamp = int(time.time())
-                    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=12))
-                    return f"{short_url}?ref=nb&t={timestamp}&id={random_id}&nopreview=1&cache={timestamp}&v=safe"
+                    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+                    
+                    # 使用常見的追蹤參數，看起來正常但能破壞預覽
+                    return f"{short_url}?utm_source=linebot&utm_medium=social&utm_campaign={random_id}&fbclid=IwAR{random_id}&t={timestamp}"
             except:
                 continue
                 
     except Exception as e:
-        print(f"⚠️ 短網址服務失敗: {e}")
+        print(f"⚠️ 短網址失敗: {e}")
     
-    # 備用方案：原網址加強力參數
+    # 備用方案：原網址加參數
     timestamp = int(time.time())
-    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=15))
+    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=10))
     separator = '&' if '?' in long_url else '?'
-    return f"{long_url}{separator}utm_source=bot&t={timestamp}&id={random_id}&nopreview=true&safe=1"
+    return f"{long_url}{separator}utm_source=linebot&utm_campaign={random_id}&fbclid=IwAR{random_id}&t={timestamp}"
 
-def format_ultra_broken_url(url):
-    """將網址打斷到極致，確保不會觸發預覽"""
-    # 移除協議
-    clean_url = url.replace('https://', '').replace('http://', '')
+def format_anti_preview_message(title, source_name, url):
+    """格式化訊息，使用零寬字符和特殊排版避免預覽"""
     
-    # 方法1: 每個特殊字符都用空格包圍
-    broken_url = clean_url.replace('.', ' . ')
-    broken_url = broken_url.replace('/', ' / ')
-    broken_url = broken_url.replace('?', ' ? ')
-    broken_url = broken_url.replace('&', ' & ')
-    broken_url = broken_url.replace('=', ' = ')
-    broken_url = broken_url.replace('-', ' - ')
+    # 方法1: 使用零寬字符打斷但保持可點擊 (推薦)
+    disguised_url = url
+    # 在協議後插入零寬字符
+    disguised_url = disguised_url.replace('https://', 'https://\u200B')
+    disguised_url = disguised_url.replace('http://', 'http://\u200B')
     
-    # 方法2: 在域名中間也加入空格
-    parts = broken_url.split(' / ', 1)
-    if len(parts) > 0:
-        domain_part = parts[0]
-        # 在域名中每隔4-6個字符加空格
-        domain_chars = list(domain_part.replace(' ', ''))
-        spaced_domain = ''
-        for i, char in enumerate(domain_chars):
-            spaced_domain += char
-            if i > 0 and (i + 1) % 5 == 0 and char not in [' ', '.']:
-                spaced_domain += ' '
-        
-        if len(parts) > 1:
-            broken_url = spaced_domain + ' / ' + parts[1]
-        else:
-            broken_url = spaced_domain
-    
-    return broken_url
+    # 方法2: 在新聞標題和網址之間加入更多內容，降低預覽觸發機率
+    formatted_message = f"""📰 {title}
+📌 來源：{source_name}
+📅 {now.strftime('%Y-%m-%d %H:%M')}
 
-def format_message_with_broken_url(title, source_name, url):
-    """格式化訊息，使用多重打斷技術"""
-    broken_url = format_ultra_broken_url(url)
+🔗 完整報導：{disguised_url}"""
     
-    # 分成多行顯示，進一步降低預覽風險
-    url_lines = []
-    words = broken_url.split()
-    current_line = ""
-    
-    for word in words:
-        if len(current_line + word) < 35:  # 每行最多35字符
-            current_line += word + " "
-        else:
-            if current_line.strip():
-                url_lines.append(current_line.strip())
-            current_line = word + " "
-    
-    if current_line.strip():
-        url_lines.append(current_line.strip())
-    
-    # 格式化多行網址顯示
-    formatted_url_lines = '\n'.join([f"  {line}" for line in url_lines])
+    return formatted_message
+
+def format_message_with_separator(title, source_name, url):
+    """使用分隔符號的格式化方法"""
+    return f"""📰 {title}
+📌 來源：{source_name}
+{'─' * 30}
+🔗 {url}
+{'─' * 30}"""
+
+def format_message_with_extra_content(title, source_name, url):
+    """在網址前後加入額外內容降低預覽機率"""
+    category = classify_news(title)
     
     return f"""📰 {title}
 📌 來源：{source_name}
-🔗 網址 (複製時移除所有空格)：
-{formatted_url_lines}"""
+📂 分類：{category}
+⏰ 發布：{now.strftime('%m/%d %H:%M')}
 
-def create_alternative_broken_url(url):
-    """替代的打斷方法 - 使用中文符號"""
-    clean_url = url.replace('https://', '').replace('http://', '')
-    
-    # 使用中文標點符號打斷
-    broken_url = clean_url.replace('.', '．')  # 使用全形句號
-    broken_url = broken_url.replace('/', '／')  # 使用全形斜線
-    broken_url = broken_url.replace('?', '？')  # 使用全形問號
-    broken_url = broken_url.replace('&', '＆')  # 使用全形&
-    broken_url = broken_url.replace('=', '＝')  # 使用全形等號
-    
-    return broken_url
+📖 詳細內容請點擊：
+{url}
 
-def create_reverse_display_url(url):
-    """反向顯示網址的部分內容"""
-    clean_url = url.replace('https://', '').replace('http://', '')
-    parts = clean_url.split('/')
-    
-    if len(parts) > 1:
-        domain = parts[0]
-        path = '/'.join(parts[1:])
-        
-        # 反向顯示域名
-        reversed_domain = domain[::-1]
-        
-        return f"🌐 {reversed_domain} (反向) → {path[:30]}..."
-    
-    return f"🌐 {clean_url[::-1]} (反向顯示)"
+📱 建議使用瀏覽器開啟以獲得最佳閱讀體驗"""
 
-def format_creative_message(title, source_name, url):
-    """創意格式化 - 多種破壞方法組合"""
+def create_redirect_url(original_url):
+    """創建重導向網址（如果你有自己的網域）"""
+    # 如果你有自己的網域，可以創建重導向服務
+    # 例如：https://yourdomain.com/redirect?url=encoded_original_url
     
-    # 方法選擇 (可以隨機或按順序)
-    method = random.choice(['broken', 'chinese', 'reverse'])
+    # 暫時使用現有的重導向服務
+    redirect_services = [
+        f"https://href.li/?{quote(original_url)}",
+        f"https://link.tl/?{quote(original_url)}",
+    ]
     
-    if method == 'broken':
-        # 超強打斷法
-        formatted_url = format_ultra_broken_url(url)
-        url_display = f"🔗 {formatted_url}\n💡 複製時請移除所有空格"
-        
-    elif method == 'chinese':
-        # 中文符號法
-        formatted_url = create_alternative_broken_url(url)
-        url_display = f"🔗 {formatted_url}\n💡 請將全形符號改為半形"
-        
-    else:  # reverse
-        # 反向顯示法
-        formatted_url = create_reverse_display_url(url)
-        url_display = f"{formatted_url}\n💡 私訊「完整網址」獲取正常連結"
+    for redirect_url in redirect_services:
+        try:
+            # 簡單測試服務是否可用
+            test_res = requests.head(redirect_url, timeout=3)
+            if test_res.status_code in [200, 301, 302]:
+                timestamp = int(time.time())
+                return f"{redirect_url}&t={timestamp}"
+        except:
+            continue
     
+    # 如果重導向服務不可用，返回原網址
+    return create_anti_preview_url(original_url)
+
+def format_message_minimal_preview_risk(title, source_name, url):
+    """最小預覽風險的格式化方法"""
+    
+    # 使用多種技巧組合
+    processed_url = create_anti_preview_url(url)
+    
+    # 加入零寬字符
+    processed_url = processed_url.replace('://', '://\u200B')
+    
+    # 使用特殊排版
     return f"""📰 {title}
-📌 來源：{source_name}
-{url_display}"""
+
+📌 {source_name} | {now.strftime('%m-%d %H:%M')}
+
+🔗 閱讀完整報導 👇
+{processed_url}"""
 
 def classify_news(title):
     title = normalize_title(title)
@@ -263,9 +232,18 @@ def fetch_news():
             if is_similar(title, known_titles_vecs):
                 continue
 
-            # 🔑 使用超強打斷網址方法
-            broken_url = create_super_broken_url(link)
-            formatted = format_message_with_broken_url(title, source_name, broken_url)
+            # 🔑 使用防預覽但保持可點擊的方法
+            processed_url = create_anti_preview_url(link)
+            
+            # 可以選擇不同的格式化方法：
+            # 方法1: 基本防預覽 (推薦)
+            formatted = format_anti_preview_message(title, source_name, processed_url)
+            
+            # 方法2: 如果方法1無效，啟用這個
+            # formatted = format_message_with_extra_content(title, source_name, processed_url)
+            
+            # 方法3: 最小風險格式
+            # formatted = format_message_minimal_preview_risk(title, source_name, processed_url)
             
             category = classify_news(title)
             classified_news[category].append(formatted)
@@ -277,18 +255,15 @@ def fetch_news():
     return classified_news
 
 def send_message_by_category(news_by_category):
-    max_length = 3500  # 因為多行格式需要更多空間
+    max_length = 4000
     no_news_categories = []
 
     for category, messages in news_by_category.items():
         if messages:
             title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
-            footer = "\n\n⚠️ 使用網址時請移除所有空格符號"
+            content = "\n\n".join(messages)
+            full_message = f"{title}\n{'='*50}\n{content}"
             
-            content = "\n" + "─"*50 + "\n".join([f"\n{msg}\n" + "─"*50 for msg in messages])
-            full_message = f"{title}{content}{footer}"
-            
-            # 分段發送長訊息
             for i in range(0, len(full_message), max_length):
                 segment = full_message[i:i + max_length]
                 if i > 0:
