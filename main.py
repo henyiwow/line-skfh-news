@@ -26,18 +26,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ✅ 初始化語意模型
+# ✅ 初始化語意模型 (可選)
 try:
     model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
     logger.info("✅ AI 模型載入成功")
+    USE_AI_MODEL = True
 except Exception as e:
-    logger.error(f"❌ AI 模型載入失敗: {e}")
+    logger.warning(f"⚠️ AI 模型載入失敗，將使用文字比對: {e}")
     model = None
+    USE_AI_MODEL = False
 
-# ✅ 去重參數設定
-SIMILARITY_THRESHOLD = 0.82  # 語意相似度門檻
-TEXT_SIMILARITY_THRESHOLD = 0.75  # 文字相似度門檻
-URL_SIMILARITY_THRESHOLD = 0.8  # URL 相似度門檻
+# ✅ 大幅放寬去重參數
+SIMILARITY_THRESHOLD = 0.95       # 語意相似度門檻 (提高到非常嚴格)
+TEXT_SIMILARITY_THRESHOLD = 0.90   # 文字相似度門檻 (提高到非常嚴格)
+URL_SIMILARITY_THRESHOLD = 0.95    # URL 相似度門檻 (提高到非常嚴格)
+ENABLE_DEDUP = True                # 可以關閉去重功能進行測試
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 if ACCESS_TOKEN:
@@ -45,24 +48,38 @@ if ACCESS_TOKEN:
 else:
     logger.error("❌ ACCESS_TOKEN 環境變數未設定")
 
+# ✅ 放寬關鍵字比對，增加更多關鍵字
 CATEGORY_KEYWORDS = {
-    "新光金控": ["新光金", "新光人壽", "新壽", "吳東進", "新光金控"],
-    "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮", "台新金控"],
-    "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金", "第一金", "元大金"],
-    "保險": ["保險", "壽險", "健康險", "意外險", "人壽", "產險", "車險", "保單"],
+    "新光金控": [
+        "新光金", "新光人壽", "新壽", "吳東進", "新光金控", "新光保險",
+        "新光銀行", "新光投信", "新光證券", "Shin Kong"
+    ],
+    "台新金控": [
+        "台新金", "台新人壽", "台新壽", "吳東亮", "台新金控", "台新保險", 
+        "台新銀行", "台新證券", "台新投信", "Taishin"
+    ],
+    "金控": [
+        "金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", 
+        "台灣金", "第一金", "元大金", "開發金", "兆豐金", "華南金", "彰銀金",
+        "金融業", "銀行業", "證券業"
+    ],
+    "保險": [
+        "保險", "壽險", "健康險", "意外險", "人壽", "產險", "車險", "保單",
+        "理賠", "投保", "保費", "保險業", "再保", "微型保險", "數位保險"
+    ],
     "其他": []
 }
 
+# ✅ 大幅減少排除關鍵字，只排除明顯無關的
 EXCLUDED_KEYWORDS = [
-    '保險套', '避孕套', '保險套使用', '太陽人壽', '大西部人壽', '美國海岸保險',
-    '香港', '大陸', '中國大陸', '美國', '日本', '韓國', '越南', '泰國', '新加坡'
+    '保險套', '避孕套', '保險套使用'
+    # 移除其他排除條件，讓更多新聞通過
 ]
 
 TW_TZ = timezone(timedelta(hours=8))
 now = datetime.now(TW_TZ)
 today = now.date()
 
-# ✅ 初始化資料庫
 def init_database():
     """初始化 SQLite 資料庫"""
     try:
@@ -85,14 +102,13 @@ def init_database():
             )
         ''')
         
-        # 建立索引提高查詢效能
+        # 建立索引
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_title_hash ON processed_news(title_hash)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_url_hash ON processed_news(url_hash)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_at ON processed_news(processed_at)')
         
-        # 清理超過7天的記錄
-        week_ago = (now - timedelta(days=7)).isoformat()
-        cursor.execute('DELETE FROM processed_news WHERE processed_at < ?', (week_ago,))
+        # 只清理超過3天的記錄 (縮短清理週期)
+        days_ago = (now - timedelta(days=3)).isoformat()
+        cursor.execute('DELETE FROM processed_news WHERE processed_at < ?', (days_ago,))
         deleted_count = cursor.rowcount
         
         conn.commit()
@@ -102,31 +118,27 @@ def init_database():
         logger.error(f"❌ 資料庫初始化失敗: {e}")
         return None
 
-# ✅ 改進的標題正規化
 def normalize_title(title):
-    """更嚴格的標題正規化"""
+    """簡化的標題正規化 - 保留更多原始資訊"""
     if not title:
         return ""
     
-    # 移除常見的新聞前綴後綴
-    title = re.sub(r'^(快訊|獨家|最新|即時|更新|圖表新聞|專題|深度|分析|重磅|突發|緊急)', '', title)
-    title = re.sub(r'[｜|‧\-－–—~～].*$', '', title)  # 移除媒體後綴
-    title = re.sub(r'<[^>]+>', '', title)            # 移除 HTML 標籤
-    title = re.sub(r'[（()）\[\]【】「」『』""''《》]', '', title)  # 移除各種括號
-    title = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', title)  # 移除非文字符號，保留空白
-    title = re.sub(r'\s+', ' ', title)               # 合併多餘空白
-    title = re.sub(r'(股份有限公司|有限公司|股份|公司|集團)', '', title)  # 移除公司後綴
-    title = re.sub(r'(新台幣|元|億|萬|千)', '', title)  # 移除金額單位
-    return title.strip().lower()
+    # 只做最基本的清理
+    title = re.sub(r'<[^>]+>', '', title)        # 移除 HTML 標籤
+    title = re.sub(r'\s+', ' ', title)           # 合併多餘空白
+    title = title.strip()
+    
+    # 不轉換大小寫，保留原始格式
+    return title
 
-def calculate_text_similarity(text1, text2):
-    """計算文字相似度 (Jaccard similarity)"""
+def calculate_simple_similarity(text1, text2):
+    """簡化的文字相似度計算"""
     if not text1 or not text2:
         return 0
     
-    # 分詞並去除短詞
-    words1 = set([w for w in text1.split() if len(w) >= 2])
-    words2 = set([w for w in text2.split() if len(w) >= 2])
+    # 簡單的關鍵字重疊比較
+    words1 = set(text1.split())
+    words2 = set(text2.split())
     
     if not words1 or not words2:
         return 0
@@ -135,75 +147,34 @@ def calculate_text_similarity(text1, text2):
     union = words1.union(words2)
     return len(intersection) / len(union) if union else 0
 
-def calculate_url_similarity(url1, url2):
-    """計算 URL 相似度"""
-    if not url1 or not url2:
-        return 0
-    
-    # 移除協議和參數
-    def clean_url(url):
-        url = re.sub(r'^https?://', '', url)
-        url = re.sub(r'\?.*$', '', url)
-        url = re.sub(r'#.*$', '', url)
-        return url.lower()
-    
-    clean1 = clean_url(url1)
-    clean2 = clean_url(url2)
-    
-    # 計算編輯距離相似度
-    from difflib import SequenceMatcher
-    return SequenceMatcher(None, clean1, clean2).ratio()
-
 def generate_hash(text):
     """生成文字雜湊"""
     if not text:
         return ""
-    return hashlib.md5(text.encode('utf-8')).hexdigest()[:16]
+    return hashlib.md5(text.encode('utf-8')).hexdigest()[:12]
 
 def is_duplicate_news(title, link, conn):
-    """改進的重複新聞檢測"""
-    if not conn:
+    """大幅放寬的重複檢測"""
+    if not ENABLE_DEDUP or not conn:
         return False
     
     try:
         normalized = normalize_title(title)
         title_hash = generate_hash(normalized)
-        url_hash = generate_hash(link)
         
         cursor = conn.cursor()
         
-        # 1. 檢查完全相同的標題雜湊
+        # 只檢查完全相同的標題雜湊
         cursor.execute('SELECT title FROM processed_news WHERE title_hash = ?', (title_hash,))
         if cursor.fetchone():
-            logger.info(f"🔄 發現重複標題雜湊: {title[:50]}...")
+            logger.info(f"🔄 發現完全相同標題: {title[:50]}...")
             return True
         
-        # 2. 檢查相同的 URL 雜湊
-        cursor.execute('SELECT title FROM processed_news WHERE url_hash = ?', (url_hash,))
+        # 只檢查完全相同的連結
+        cursor.execute('SELECT title FROM processed_news WHERE link = ?', (link,))
         if cursor.fetchone():
-            logger.info(f"🔄 發現重複URL: {title[:50]}...")
+            logger.info(f"🔄 發現相同連結: {title[:50]}...")
             return True
-        
-        # 3. 檢查文字相似度和 URL 相似度
-        cursor.execute('''
-            SELECT normalized_title, link FROM processed_news 
-            WHERE processed_at > ? 
-            ORDER BY processed_at DESC 
-            LIMIT 200
-        ''', ((now - timedelta(hours=48)).isoformat(),))
-        
-        for stored_title, stored_link in cursor.fetchall():
-            # 文字相似度檢查
-            text_sim = calculate_text_similarity(normalized, stored_title)
-            if text_sim >= TEXT_SIMILARITY_THRESHOLD:
-                logger.info(f"🔄 發現高文字相似度 ({text_sim:.2f}): {title[:50]}...")
-                return True
-            
-            # URL 相似度檢查
-            url_sim = calculate_url_similarity(link, stored_link)
-            if url_sim >= URL_SIMILARITY_THRESHOLD:
-                logger.info(f"🔄 發現相似URL ({url_sim:.2f}): {title[:50]}...")
-                return True
         
         return False
         
@@ -235,69 +206,71 @@ def save_processed_news(title, link, source, category, pub_date, conn):
     except Exception as e:
         logger.error(f"❌ 儲存新聞失敗: {e}")
 
-# ✅ 修改網址處理，避免 LINE 預覽
 def create_clean_url(long_url):
     """建立避免 LINE 預覽的網址"""
     try:
-        # 方法1: 使用 TinyURL
+        # 使用 TinyURL
         encoded_url = quote(long_url, safe='')
         api_url = f"http://tinyurl.com/api-create.php?url={encoded_url}"
         res = requests.get(api_url, timeout=8)
         
         if res.status_code == 200 and res.text.startswith('http'):
             short_url = res.text.strip()
-            # 加上破壞預覽的參數
-            return f"{short_url}?v={int(time.time())}"
+            return f"{short_url}?t={int(time.time())}"
         
     except Exception as e:
         logger.warning(f"⚠️ 短網址失敗: {e}")
     
-    # 備用方案：直接在原網址加參數
+    # 備用方案
     separator = '&' if '?' in long_url else '?'
-    return f"{long_url}{separator}cache_bust={int(time.time())}&noprev=1"
+    return f"{long_url}{separator}t={int(time.time())}"
 
 def classify_news(title):
-    """新聞分類"""
-    normalized_title = normalize_title(title)
+    """放寬的新聞分類"""
+    title_lower = title.lower()
     
-    # 依序檢查分類，優先檢查特定公司
+    # 依序檢查分類
     for category, keywords in CATEGORY_KEYWORDS.items():
-        if category == "其他":  # 跳過「其他」分類
+        if category == "其他":
             continue
         for keyword in keywords:
-            if keyword.lower() in normalized_title:
+            if keyword.lower() in title_lower:
+                logger.info(f"📂 分類為 [{category}]: {keyword} in {title[:50]}")
                 return category
     
+    logger.info(f"📂 分類為 [其他]: {title[:50]}")
     return "其他"
 
 def is_taiwan_news(source_name, link, title):
-    """判斷是否為台灣新聞"""
+    """大幅放寬台灣新聞判斷"""
+    # 大幅擴展台灣新聞來源
     taiwan_sources = [
         '工商時報', '中國時報', '經濟日報', '三立新聞網', '自由時報', '聯合新聞網',
         '鏡週刊', '台灣雅虎', '鉅亨網', '中時新聞網', 'Ettoday新聞雲', 'ETtoday',
-        '天下雜誌', '奇摩新聞', '《現代保險》雜誌', '遠見雜誌', '商業周刊', '今周刊',
-        'MoneyDJ', '鉅亨', 'Anue', '理財網', '經濟通', '卡優新聞網'
+        '天下雜誌', '奇摩新聞', '現代保險', '遠見雜誌', '商業周刊', '今周刊',
+        'MoneyDJ', '鉅亨', 'Anue', '理財網', '經濟通', '卡優新聞網', 'Yahoo',
+        '蘋果新聞網', '中央社', 'NOWnews', '風傳媒', '新頭殼', 'Newtalk',
+        '財訊', 'Smart', '鉅亨網', '工商', '經濟'
     ]
     
-    # 檢查來源
+    # 檢查來源 (移除香港排除條件，先放寬測試)
     if any(taiwan_source in source_name for taiwan_source in taiwan_sources):
-        if "香港經濟日報" not in source_name:  # 排除香港媒體
-            return True
+        logger.info(f"✅ 台灣新聞來源: {source_name}")
+        return True
     
     # 檢查網域
-    if '.tw' in link or 'yahoo.com' in link:
+    taiwan_domains = ['.tw', 'yahoo.com', 'google.com', 'ettoday', 'chinatimes', 'udn.com']
+    if any(domain in link for domain in taiwan_domains):
+        logger.info(f"✅ 台灣網域: {link}")
         return True
     
-    # 檢查標題內容（台灣特有詞彙）
-    taiwan_terms = ['新台幣', '立法院', '行政院', '金管會', '央行', '台股', '台灣', '北市', '高雄']
-    if any(term in title for term in taiwan_terms):
-        return True
-    
-    return False
+    # 大幅放寬，幾乎所有新聞都通過
+    logger.info(f"✅ 預設通過: {source_name}")
+    return True
 
 def is_semantically_similar(title, processed_embeddings):
-    """語意相似度檢測"""
-    if not model or not processed_embeddings:
+    """語意相似度檢測 (可選)"""
+    if not USE_AI_MODEL or not model or not processed_embeddings or not ENABLE_DEDUP:
         return False
     
     try:
@@ -320,20 +293,18 @@ def is_semantically_similar(title, processed_embeddings):
         return False
 
 def fetch_news():
-    """主要新聞抓取函數"""
+    """主要新聞抓取函數 - 放寬所有條件"""
     logger.info("🚀 開始抓取新聞...")
     
     conn = init_database()
-    if not conn:
-        logger.error("❌ 資料庫連接失敗，無法繼續")
-        return {}
     
+    # 簡化 RSS URLs，移除時間限制
     rss_urls = [
-        "https://news.google.com/rss/search?q=(新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽)+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=(壽險+OR+健康險+OR+意外險+OR+人壽)+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=(金控+OR+金融控股)+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=壽險+OR+健康險+OR+意外險+OR+人壽+OR+保險&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=金控+OR+金融控股+OR+銀行&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     ]
 
     classified_news = {cat: [] for cat in CATEGORY_KEYWORDS}
@@ -342,27 +313,28 @@ def fetch_news():
         'total_fetched': 0,
         'processed': 0,
         'duplicates': 0,
-        'filtered_out': 0
+        'filtered_out': 0,
+        'by_category': {cat: 0 for cat in CATEGORY_KEYWORDS}
     }
 
-    # 載入最近的新聞標題進行比較
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT normalized_title FROM processed_news 
-            WHERE processed_at > ? 
-            ORDER BY processed_at DESC 
-            LIMIT 300
-        ''', ((now - timedelta(hours=48)).isoformat(),))
-        
-        recent_titles = [row[0] for row in cursor.fetchall()]
-        
-        if recent_titles and model:
-            logger.info(f"✅ 載入 {len(recent_titles)} 個最近標題用於語意比較")
-            processed_embeddings = model.encode(recent_titles)
+    # 載入最近的新聞 (縮短時間範圍)
+    if USE_AI_MODEL and conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT normalized_title FROM processed_news 
+                WHERE processed_at > ? 
+                LIMIT 100
+            ''', ((now - timedelta(hours=24)).isoformat(),))
             
-    except Exception as e:
-        logger.error(f"❌ 載入歷史標題失敗: {e}")
+            recent_titles = [row[0] for row in cursor.fetchall()]
+            
+            if recent_titles and model:
+                logger.info(f"✅ 載入 {len(recent_titles)} 個最近標題用於比較")
+                processed_embeddings = model.encode(recent_titles)
+                
+        except Exception as e:
+            logger.error(f"❌ 載入歷史標題失敗: {e}")
 
     # 處理每個 RSS 來源
     for i, rss_url in enumerate(rss_urls, 1):
@@ -407,22 +379,33 @@ def fetch_news():
                     try:
                         pub_datetime = email.utils.parsedate_to_datetime(pubDate_str).astimezone(TW_TZ)
                     except:
-                        continue
+                        # 如果時間解析失敗，使用當前時間
+                        pub_datetime = now
+                        logger.warning(f"⚠️ 時間解析失敗，使用當前時間: {title[:30]}")
 
-                    # 基本過濾條件
-                    if now - pub_datetime > timedelta(hours=24):
+                    logger.info(f"📝 處理新聞: {title[:50]}... | 來源: {source_name}")
+
+                    # 放寬基本過濾條件
+                    
+                    # 1. 時間過濾 - 延長到48小時
+                    if now - pub_datetime > timedelta(hours=48):
                         stats['filtered_out'] += 1
+                        logger.info(f"⏰ 時間過濾: {title[:30]}...")
                         continue
-                        
+                    
+                    # 2. 排除關鍵字檢查 - 只排除極少數
                     if any(bad_kw in title for bad_kw in EXCLUDED_KEYWORDS):
                         stats['filtered_out'] += 1
+                        logger.info(f"🚫 關鍵字過濾: {title[:30]}...")
                         continue
-                        
+                    
+                    # 3. 台灣新聞檢查 - 大幅放寬
                     if not is_taiwan_news(source_name, link, title):
                         stats['filtered_out'] += 1
+                        logger.info(f"🌏 地區過濾: {title[:30]}...")
                         continue
 
-                    # 重複檢測
+                    # 4. 重複檢測 - 可選
                     if is_duplicate_news(title, link, conn):
                         stats['duplicates'] += 1
                         continue
@@ -431,20 +414,22 @@ def fetch_news():
                         stats['duplicates'] += 1
                         continue
 
-                    # 新聞處理
+                    # 新聞通過所有檢查
                     clean_url = create_clean_url(link)
                     category = classify_news(title)
                     
-                    # 格式化新聞（避免 LINE 預覽）
+                    # 格式化新聞
                     formatted = f"📰 {title}\n📌 {source_name}\n🔗 詳情: {clean_url}"
                     classified_news[category].append(formatted)
+                    stats['by_category'][category] += 1
                     
                     # 儲存到資料庫
-                    save_processed_news(title, link, source_name, category, 
-                                      pub_datetime.isoformat(), conn)
+                    if conn:
+                        save_processed_news(title, link, source_name, category, 
+                                          pub_datetime.isoformat(), conn)
                     
                     # 更新語意比較基準
-                    if model and len(processed_embeddings) > 0:
+                    if USE_AI_MODEL and model and len(processed_embeddings) > 0:
                         try:
                             new_embedding = model.encode([normalize_title(title)])
                             processed_embeddings = np.vstack([processed_embeddings, new_embedding])
@@ -452,6 +437,7 @@ def fetch_news():
                             pass
                     
                     stats['processed'] += 1
+                    logger.info(f"✅ 成功處理: [{category}] {title[:30]}...")
                     
                 except Exception as e:
                     logger.error(f"❌ 處理單筆新聞失敗: {e}")
@@ -461,15 +447,23 @@ def fetch_news():
             logger.error(f"❌ 處理 RSS 來源失敗: {e}")
             continue
 
-    conn.close()
+    if conn:
+        conn.close()
     
-    # 輸出統計資訊
+    # 輸出詳細統計
     logger.info(f"""
 📊 新聞處理統計:
    總抓取: {stats['total_fetched']} 筆
    成功處理: {stats['processed']} 筆
    重複過濾: {stats['duplicates']} 筆
    其他過濾: {stats['filtered_out']} 筆
+   
+   分類統計:
+   📂 新光金控: {stats['by_category']['新光金控']} 筆
+   📂 台新金控: {stats['by_category']['台新金控']} 筆
+   📂 金控: {stats['by_category']['金控']} 筆
+   📂 保險: {stats['by_category']['保險']} 筆
+   📂 其他: {stats['by_category']['其他']} 筆
 """)
     
     return classified_news
@@ -480,14 +474,19 @@ def send_message_by_category(news_by_category):
         logger.error("❌ ACCESS_TOKEN 未設定，無法發送訊息")
         return
     
-    max_length = 3800  # LINE 訊息長度限制
+    max_length = 3800
     successful_sends = 0
+    total_news = sum(len(msgs) for msgs in news_by_category.values())
+    
+    logger.info(f"📨 準備發送 {total_news} 則新聞")
     
     for category, messages in news_by_category.items():
         if not messages:
             continue
             
         try:
+            logger.info(f"📤 發送分類 [{category}]: {len(messages)} 則新聞")
+            
             # 建立分類標題
             title = f"【{today} {category} 新聞】共 {len(messages)} 則"
             divider = "=" * 35
@@ -528,7 +527,7 @@ def send_message_by_category(news_by_category):
         content = "\n".join(f"📂 {cat}: 無相關新聞" for cat in empty_categories)
         broadcast_message(f"{title}\n{content}")
         
-    logger.info(f"✅ 成功發送 {successful_sends} 個分類的訊息")
+    logger.info(f"✅ 成功發送 {successful_sends} 個訊息段落")
 
 def broadcast_message(message):
     """發送 LINE 廣播訊息"""
@@ -562,21 +561,28 @@ def broadcast_message(message):
 
 if __name__ == "__main__":
     start_time = time.time()
-    logger.info(f"🚀 新聞爬取系統啟動 - {now}")
+    logger.info(f"🚀 新聞爬取系統啟動 (放寬模式) - {now}")
+    
+    # 測試模式：可以關閉去重功能
+    if os.getenv('DISABLE_DEDUP') == 'true':
+        ENABLE_DEDUP = False
+        logger.info("🔓 去重功能已關閉 (測試模式)")
     
     try:
         news = fetch_news()
         
-        # 檢查是否有新聞需要發送
+        # 檢查是否有新聞
         total_news = sum(len(msgs) for msgs in news.values())
         
         if total_news > 0:
             logger.info(f"📨 準備發送 {total_news} 則新聞")
             send_message_by_category(news)
         else:
-            logger.info("ℹ️ 沒有符合條件的新聞")
-            # 發送無新聞通知
-            broadcast_message(f"【{today} 業企部新聞】\n今日暫無符合條件的重點新聞")
+            logger.warning("⚠️ 沒有符合條件的新聞")
+            # 發送調試訊息
+            if ACCESS_TOKEN:
+                debug_msg = f"【{today} 系統通知】\n新聞爬取完成，但沒有符合條件的新聞\n請檢查關鍵字和過濾條件"
+                broadcast_message(debug_msg)
         
         elapsed = time.time() - start_time
         logger.info(f"✅ 系統執行完成，耗時 {elapsed:.1f} 秒")
@@ -585,7 +591,8 @@ if __name__ == "__main__":
         logger.error(f"❌ 系統執行失敗: {e}")
         # 發送錯誤通知
         if ACCESS_TOKEN:
-            broadcast_message(f"【系統通知】\n新聞爬取系統執行異常: {str(e)[:100]}")
+            error_msg = f"【系統錯誤】\n新聞爬取系統執行異常\n錯誤: {str(e)[:100]}"
+            broadcast_message(error_msg)
 
 
 
