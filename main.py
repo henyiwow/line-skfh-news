@@ -1,4 +1,3 @@
-
 import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
@@ -651,6 +650,22 @@ if __name__ == "__main__":
     
     # 檢查是否有新聞
     if any(news_items for news_items in news.values()):
-        # 使用智能策略發
-
+        # 使用智能策略發送新聞
+        send_message_by_strategy(news)
+        
+        # 🔧 統計信息
+        total_news = sum(len(news_items) for news_items in news.values())
+        strategy = smart_message_strategy(news)
+        
+        print(f"✅ 新聞推播完成！")
+        print(f"📊 使用策略：{strategy}")
+        print(f"📈 總共處理：{total_news} 則新聞")
+        
+        for category, news_items in news.items():
+            if news_items:
+                print(f"   📁 【{category}】: {len(news_items)} 則")
+    else:
+        print("⚠️ 沒有符合條件的新聞，不發送。")
+        
+    print("🏁 程式執行完成")
 
