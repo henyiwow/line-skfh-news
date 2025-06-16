@@ -53,10 +53,36 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title)               # Remove extra spaces
     return title.strip().lower()
 
+def disguise_url(url):
+    """
+    Disguise URL to avoid LINE auto-preview
+    Method 1: Add invisible characters
+    Method 2: Break URL format
+    Method 3: Use text encoding
+    """
+    # Method 1: Add invisible characters to break URL recognition
+    disguised = url.replace('://', '://\u200B')  # Zero-width space
+    disguised = disguised.replace('.', '.\u200B')  # Zero-width space after dots
+    return disguised
+
+def format_url_text(url, title):
+    """
+    Format URL as text to avoid card preview
+    Various methods to present URL without triggering preview
+    """
+    # Method 1: Use text description with disguised URL
+    return f"🌐 點此閱讀：{disguise_url(url)}"
+    
+    # Method 2: Use QR code approach (alternative)
+    # return f"🔍 搜尋「{title[:20]}」或使用 QR Code"
+    
+    # Method 3: Use domain only approach (alternative)
+    # domain = url.split('/')[2] if '://' in url else url.split('/')[0]
+    # return f"📖 前往 {domain} 閱讀完整內容"
+
 def shorten_url(long_url, service='tinyurl'):
     """
     Support multiple URL shortening services
-    service: 'tinyurl', 'is.gd', 'v.gd'
     """
     try:
         if service == 'tinyurl':
@@ -211,6 +237,8 @@ def fetch_news():
                     'source': source_name,
                     'link': link,
                     'short_link': short_link,
+                    'disguised_url': disguise_url(short_link),
+                    'url_text': format_url_text(short_link, title),
                     'category': category,
                     'pub_datetime': pub_datetime,
                     'time_ago': format_time_ago(pub_datetime)
@@ -232,8 +260,8 @@ def fetch_news():
 
     return classified_news
 
-def create_forward_friendly_unified_message(news_by_category):
-    """Create forward-friendly unified message format"""
+def create_no_card_unified_message(news_by_category):
+    """Create unified message without URL cards"""
     # Count total news
     total_news = sum(len(news_items) for news_items in news_by_category.values() if news_items)
     
@@ -243,7 +271,7 @@ def create_forward_friendly_unified_message(news_by_category):
             "text": f"📅 {today.strftime('%Y/%m/%d')} 業企部今日新聞\n\n❌ 今日暫無相關新聞"
         }
     
-    # Create unified message content (including short URLs)
+    # Create unified message content (with disguised URLs)
     text_lines = [
         f"📅 {today.strftime('%Y/%m/%d')} 業企部今日新聞總覽",
         f"📊 共 {total_news} 則新聞",
@@ -273,7 +301,7 @@ def create_forward_friendly_unified_message(news_by_category):
             truncated_title = truncate_title(item['title'], 40)
             text_lines.append(f"{news_counter:2d}. {truncated_title}")
             text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-            text_lines.append(f"     🔗 {item['short_link']}")  # KEY: Include short URL
+            text_lines.append(f"     {item['url_text']}")  # KEY: Use disguised URL text
             text_lines.append("")
             
             # Add to all news list
@@ -287,11 +315,11 @@ def create_forward_friendly_unified_message(news_by_category):
             text_lines.append(f"     ⬇️ 還有 {len(news_items) - display_count} 則新聞")
             text_lines.append("")
     
-    # Forward-friendly usage instructions
+    # Usage instructions
     text_lines.extend([
         "📱 使用方式：",
-        "• 點擊下方按鈕快速瀏覽（僅限原始訊息）",
-        "• 點擊上方 🔗 連結直接閱讀（轉發後仍可用）",
+        "• 點擊下方按鈕快速瀏覽（原始訊息專用）",
+        "• 複製上方網址到瀏覽器開啟（轉發後可用）",
         ""
     ])
     
@@ -427,7 +455,7 @@ def create_category_menu_message(news_by_category):
     }
 
 def create_category_detail_message(news_items, category):
-    """Create detailed news message for specific category (hybrid mode version)"""
+    """Create detailed news message for specific category (no URL card version)"""
     if not news_items:
         return {
             "type": "text",
@@ -443,12 +471,12 @@ def create_category_detail_message(news_items, category):
         ""
     ]
     
-    # Show news list (max 8 details, including short URLs)
+    # Show news list (max 8 details, with disguised URLs)
     display_count = min(8, len(news_items))
     for i, item in enumerate(news_items[:display_count], 1):
         text_lines.append(f"{i:2d}. {item['title']}")
         text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-        text_lines.append(f"     🔗 {item['short_link']}")  # Include short URL
+        text_lines.append(f"     {item['url_text']}")  # Use disguised URL text
         text_lines.append("")
     
     if len(news_items) > display_count:
@@ -458,8 +486,8 @@ def create_category_detail_message(news_items, category):
     # Usage instructions
     text_lines.extend([
         "📱 使用方式：",
-        "• 點擊下方按鈕快速瀏覽（僅限原始訊息）",
-        "• 點擊上方 🔗 連結直接閱讀（轉發後仍可用）"
+        "• 點擊下方按鈕快速瀏覽（原始訊息專用）",
+        "• 複製上方網址到瀏覽器開啟（轉發後可用）"
     ])
     
     text_content = "\n".join(text_lines)
@@ -509,19 +537,19 @@ def create_category_detail_message(news_items, category):
         }
     }
 
-def send_message_by_hybrid_strategy(news_by_category):
-    """Send message using hybrid strategy"""
+def send_message_by_no_card_strategy(news_by_category):
+    """Send message using no URL card strategy"""
     strategy = smart_message_strategy(news_by_category)
     total_news = sum(len(items) for items in news_by_category.values() if items)
     
     print(f"Smart decision: {total_news} total news, using {strategy} mode")
-    print(f"Using hybrid mode - forward-friendly design")
+    print(f"Using no URL card mode - clean message design")
     
     if strategy == "unified":
-        # Hybrid mode unified message
-        message = create_forward_friendly_unified_message(news_by_category)
+        # No URL card unified message
+        message = create_no_card_unified_message(news_by_category)
         broadcast_message_advanced(message)
-        print(f"Sent hybrid mode unified message with {total_news} news")
+        print(f"Sent no URL card unified message with {total_news} news")
         
     elif strategy == "category_menu":
         # Category menu mode
@@ -560,7 +588,7 @@ def broadcast_message_advanced(message):
         print(f"Error sending message: {e}")
 
 def handle_postback(event_data, news_by_category):
-    """Handle user Postback events"""
+    """Handle user Postback events (no URL card version)"""
     print(f"Received Postback event: {event_data}")
     
     try:
@@ -585,7 +613,7 @@ def handle_postback(event_data, news_by_category):
                     highlight_news.extend(news_by_category[category][:3])  # Take first 3 from each
             
             if highlight_news:
-                # Create highlights message (hybrid mode version)
+                # Create highlights message (no URL card version)
                 text_lines = [
                     f"⭐ {today.strftime('%Y/%m/%d')} 今日重點新聞",
                     f"📊 共 {len(highlight_news)} 則重點新聞",
@@ -596,14 +624,14 @@ def handle_postback(event_data, news_by_category):
                 for i, item in enumerate(highlight_news, 1):
                     text_lines.append(f"{i:2d}. {item['title']}")
                     text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-                    text_lines.append(f"     🔗 {item['short_link']}")  # Include short URL
+                    text_lines.append(f"     {item['url_text']}")  # Use disguised URL text
                     text_lines.append("")
                 
                 # Usage instructions
                 text_lines.extend([
                     "📱 使用方式：",
-                    "• 點擊下方按鈕快速瀏覽（僅限原始訊息）",
-                    "• 點擊上方 🔗 連結直接閱讀（轉發後仍可用）"
+                    "• 點擊下方按鈕快速瀏覽（原始訊息專用）",
+                    "• 複製上方網址到瀏覽器開啟（轉發後可用）"
                 ])
                 
                 quick_reply_items = []
@@ -646,7 +674,7 @@ def handle_postback(event_data, news_by_category):
             broadcast_message_advanced(message)
         
         elif event_data == "view_all_news":
-            # View all news (unified mode extension) - hybrid mode version
+            # View all news (no URL card version)
             all_news = []
             for category, news_items in news_by_category.items():
                 if news_items:
@@ -669,156 +697,4 @@ def handle_postback(event_data, news_by_category):
                 ]
                 
                 for j, item in enumerate(batch, i+1):
-                    text_lines.append(f"{j:2d}. {item['title']}")
-                    text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-                    text_lines.append(f"     🔗 {item['short_link']}")  # Include short URL
-                    text_lines.append("")
-                
-                # Usage instructions (only show in first batch)
-                if i == 0:
-                    text_lines.extend([
-                        "📱 使用方式：",
-                        "• 點擊 🔗 連結直接閱讀（轉發後仍可用）",
-                        ""
-                    ])
-                
-                simple_message = {"type": "text", "text": "\n".join(text_lines)}
-                broadcast_message_advanced(simple_message)
-                
-                # Avoid sending too fast
-                if i + 10 < len(all_news):
-                    time.sleep(1)
-        
-        elif event_data.startswith("more_"):
-            # View more news for specific category
-            category = event_data.replace("more_", "")
-            if category in news_by_category and news_by_category[category]:
-                # Send complete news list for this category (from 9th onwards)
-                news_items = news_by_category[category]
-                remaining_news = news_items[8:]  # From 9th onwards
-                
-                if remaining_news:
-                    text_lines = [
-                        f"📋 【{category}】完整新聞列表",
-                        f"📊 第 9-{len(news_items)} 則 / 共 {len(news_items)} 則",
-                        "=" * 30,
-                        ""
-                    ]
-                    
-                    for i, item in enumerate(remaining_news, 9):
-                        text_lines.append(f"{i:2d}. {item['title']}")
-                        text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-                        text_lines.append(f"     🔗 {item['short_link']}")  # Include short URL
-                        text_lines.append("")
-                    
-                    # Usage instructions
-                    text_lines.extend([
-                        "📱 使用方式：",
-                        "• 點擊 🔗 連結直接閱讀（轉發後仍可用）"
-                    ])
-                    
-                    message = {"type": "text", "text": "\n".join(text_lines)}
-                    broadcast_message_advanced(message)
-
-        elif event_data == "all_summary":
-            # All news summary (hybrid mode version)
-            text_lines = [
-                f"📊 {today.strftime('%Y/%m/%d')} 全部新聞摘要",
-                "=" * 35,
-                ""
-            ]
-            
-            total_count = 0
-            for category, news_items in news_by_category.items():
-                if not news_items:
-                    continue
-                    
-                category_emoji = CATEGORY_EMOJIS.get(category, "📰")
-                text_lines.append(f"{category_emoji} 【{category}】{len(news_items)} 則")
-                text_lines.append("")
-                
-                # Show first 3 items summary for each category
-                for i, item in enumerate(news_items[:3], 1):
-                    total_count += 1
-                    truncated_title = truncate_title(item['title'], 35)
-                    text_lines.append(f"{total_count:2d}. {truncated_title}")
-                    text_lines.append(f"     📌 {item['source']} • {item['time_ago']}")
-                    text_lines.append(f"     🔗 {item['short_link']}")  # Include short URL
-                    text_lines.append("")
-                
-                if len(news_items) > 3:
-                    text_lines.append(f"     ⬇️ 還有 {len(news_items) - 3} 則新聞")
-                    text_lines.append("")
-            
-            # Usage instructions
-            text_lines.extend([
-                "📱 使用方式：",
-                "• 點擊 🔗 連結直接閱讀（轉發後仍可用）",
-                "• 返回選單查看完整分類新聞"
-            ])
-            
-            quick_reply_items = [{
-                "type": "action",
-                "action": {
-                    "type": "postback",
-                    "label": "🔙 返回選單",
-                    "data": "back_to_menu",
-                    "displayText": "返回分類選單"
-                }
-            }]
-            
-            message = {
-                "type": "text",
-                "text": "\n".join(text_lines),
-                "quickReply": {"items": quick_reply_items}
-            }
-            broadcast_message_advanced(message)
-    
-    except Exception as e:
-        print(f"Error handling Postback event: {e}")
-        error_message = {
-            "type": "text",
-            "text": "❌ 處理請求時發生錯誤，請稍後再試。"
-        }
-        broadcast_message_advanced(error_message)
-
-if __name__ == "__main__":
-    print("🚀 Starting Hybrid Mode LINE News Bot")
-    print(f"📅 Execution time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"🔄 Using hybrid mode - forward-friendly design")
-    print(f"🧠 Smart threshold: <={UNIFIED_MODE_THRESHOLD} use unified, >={UNIFIED_MODE_THRESHOLD+1} use category menu")
-    print("💡 Features: Quick Reply buttons + short URL links")
-    
-    try:
-        # Fetch news
-        news = fetch_news()
-        
-        # Check if there are any news
-        if any(news_items for news_items in news.values()):
-            # Send news using hybrid strategy
-            send_message_by_hybrid_strategy(news)
-            
-            # Statistics
-            total_news = sum(len(news_items) for news_items in news.values())
-            strategy = smart_message_strategy(news)
-            
-            print(f"✅ Hybrid mode news broadcast completed!")
-            print(f"📊 Strategy used: {strategy}")
-            print(f"📈 Total processed: {total_news} news items")
-            print(f"🔄 Forward-friendly: All news include short URL links")
-            
-            for category, news_items in news.items():
-                if news_items:
-                    print(f"   📁 【{category}】: {len(news_items)} items")
-        else:
-            print("⚠️ No qualifying news found, not sending.")
-    
-    except Exception as e:
-        print(f"❌ Error during execution: {e}")
-        import traceback
-        traceback.print_exc()
-        
-    print("🏁 Hybrid mode program execution completed")
-    print("💡 Original users can use Quick Reply buttons")
-    print("💡 Forwarded users can click short URL links")
-    print("💡 Perfect solution for forward button disappearing issue!")
+                    text_lines
