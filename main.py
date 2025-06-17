@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
+from bs4 import BeautifulSoup
 
 # ✅ 初始化語意模型
 model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
@@ -39,6 +40,59 @@ def normalize_title(title):
     title = re.sub(r'[^\w\u4e00-\u9fff\s]', '', title)  # 移除非文字符號
     title = re.sub(r'\s+', ' ', title)               # 多餘空白
     return title.strip().lower()
+
+def get_article_summary(url, max_chars=100):
+    """獲取文章摘要"""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 移除不需要的標籤
+        for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']):
+            tag.decompose()
+        
+        # 尋找文章內容的常見標籤
+        content_selectors = [
+            'article p', '.content p', '.article-content p', 
+            '.news-content p', '.post-content p', 'main p',
+            '.entry-content p', '.story-content p', '.article-body p'
+        ]
+        
+        content_text = ""
+        for selector in content_selectors:
+            paragraphs = soup.select(selector)
+            if paragraphs and len(paragraphs) > 0:
+                # 取前2段，過濾掉太短的段落
+                valid_paragraphs = [p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 15]
+                if valid_paragraphs:
+                    content_text = " ".join(valid_paragraphs[:2])
+                    break
+        
+        # 如果找不到特定選擇器，嘗試所有 p 標籤
+        if not content_text:
+            paragraphs = soup.find_all('p')
+            valid_paragraphs = [p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 15]
+            if valid_paragraphs:
+                content_text = " ".join(valid_paragraphs[:2])
+        
+        # 清理文本
+        content_text = re.sub(r'\s+', ' ', content_text)
+        content_text = re.sub(r'[^\w\s\u4e00-\u9fff，。！？；：「」『』（）]', '', content_text)
+        content_text = content_text.strip()
+        
+        # 截取指定字數
+        if len(content_text) > max_chars:
+            content_text = content_text[:max_chars] + "..."
+        
+        return content_text if content_text else "無法獲取摘要"
+        
+    except Exception as e:
+        print(f"⚠️ 獲取摘要失敗 ({url[:50]}...): {e}")
+        return "無法獲取摘要"
 
 def shorten_url(long_url):
     try:
@@ -126,9 +180,15 @@ def fetch_news():
             if is_similar(title, known_titles_vecs):
                 continue
 
+            # ✅ 獲取文章摘要
+            print(f"📰 正在處理: {title[:40]}...")
+            summary = get_article_summary(link)
+            
             short_link = shorten_url(link)
             category = classify_news(title)
-            formatted = f"📰 {title}\n📌 來源：{source_name}\n🔗 {short_link}"
+            
+            # ✅ 修改格式，加入摘要
+            formatted = f"📰 {title}\n📝 {summary}\n📌 來源：{source_name}\n🔗 {short_link}"
             classified_news[category].append(formatted)
 
             # ✅ 新增向量（用正規化後標題）
@@ -144,10 +204,15 @@ def send_message_by_category(news_by_category):
     for category, messages in news_by_category.items():
         if messages:
             title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
-            content = "\n".join(messages)
+            content = "\n\n".join(messages)  # 使用雙換行分隔每則新聞
             full_message = f"{title}\n\n{content}"
+            
+            # 如果訊息太長，分段發送
             for i in range(0, len(full_message), max_length):
-                broadcast_message(full_message[i:i + max_length])
+                part = full_message[i:i + max_length]
+                if i > 0:  # 第二段開始加上分段標示
+                    part = f"【{category}】續...\n\n{part}"
+                broadcast_message(part)
         else:
             no_news_categories.append(category)
 
