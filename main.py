@@ -42,56 +42,135 @@ def normalize_title(title):
     return title.strip().lower()
 
 def get_article_summary(url, max_chars=100):
-    """獲取文章摘要"""
+    """獲取文章摘要（增強版）"""
     try:
+        # 更完整的 headers
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         }
-        response = requests.get(url, headers=headers, timeout=10)
+        
+        # 處理 Google News 重定向網址
+        if 'news.google.com' in url and '/articles/' in url:
+            # 對於 Google News 網址，嘗試提取真實網址
+            try:
+                response = requests.get(url, headers=headers, timeout=8, allow_redirects=True)
+                actual_url = response.url
+                if actual_url != url:
+                    url = actual_url
+            except:
+                pass
+        
+        response = requests.get(url, headers=headers, timeout=12, allow_redirects=True)
         response.encoding = 'utf-8'
+        
+        # 檢查是否成功獲取內容
+        if response.status_code != 200:
+            return "無法獲取摘要"
+            
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # 移除不需要的標籤
-        for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']):
+        for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'form', 'button']):
             tag.decompose()
         
-        # 尋找文章內容的常見標籤
+        # 更全面的內容選擇器
         content_selectors = [
-            'article p', '.content p', '.article-content p', 
-            '.news-content p', '.post-content p', 'main p',
-            '.entry-content p', '.story-content p', '.article-body p'
+            # 新聞網站常見的內容區域
+            'article p', '.article p', '.content p', '.article-content p', 
+            '.news-content p', '.post-content p', 'main p', '.main p',
+            '.entry-content p', '.story-content p', '.article-body p',
+            '.news-body p', '.story p', '.post p', '.article-text p',
+            # 特定新聞網站
+            '.story_content p', '.news_content p', '.article_content p',
+            '.post_content p', '.content_detail p', '.detail_content p',
+            # 通用選擇器
+            '[class*="content"] p', '[class*="article"] p', '[class*="story"] p',
+            '[class*="news"] p', '[class*="post"] p', '[class*="detail"] p'
         ]
         
         content_text = ""
+        
+        # 嘗試各種選擇器
         for selector in content_selectors:
-            paragraphs = soup.select(selector)
-            if paragraphs and len(paragraphs) > 0:
-                # 取前2段，過濾掉太短的段落
-                valid_paragraphs = [p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 15]
+            try:
+                paragraphs = soup.select(selector)
+                if paragraphs and len(paragraphs) > 0:
+                    # 取前3段，過濾掉太短的段落
+                    valid_paragraphs = []
+                    for p in paragraphs[:5]:  # 檢查前5段
+                        text = p.get_text().strip()
+                        # 過濾掉太短、純數字、或明顯是導航/廣告的段落
+                        if (len(text) > 20 and 
+                            not text.isdigit() and 
+                            '點擊' not in text and 
+                            '更多' not in text and
+                            '廣告' not in text and
+                            '訂閱' not in text):
+                            valid_paragraphs.append(text)
+                    
+                    if len(valid_paragraphs) >= 1:
+                        content_text = " ".join(valid_paragraphs[:2])
+                        break
+            except:
+                continue
+        
+        # 如果還是沒找到，使用更寬鬆的方法
+        if not content_text:
+            try:
+                # 尋找所有段落，不限制選擇器
+                all_paragraphs = soup.find_all('p')
+                valid_paragraphs = []
+                for p in all_paragraphs:
+                    text = p.get_text().strip()
+                    if (len(text) > 25 and 
+                        not text.isdigit() and 
+                        len([c for c in text if c.isalpha() or '\u4e00' <= c <= '\u9fff']) > 10):
+                        valid_paragraphs.append(text)
+                
                 if valid_paragraphs:
                     content_text = " ".join(valid_paragraphs[:2])
-                    break
+            except:
+                pass
         
-        # 如果找不到特定選擇器，嘗試所有 p 標籤
+        # 最後手段：嘗試取 meta description
         if not content_text:
-            paragraphs = soup.find_all('p')
-            valid_paragraphs = [p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 15]
-            if valid_paragraphs:
-                content_text = " ".join(valid_paragraphs[:2])
+            try:
+                meta_desc = soup.find('meta', attrs={'name': 'description'})
+                if meta_desc and meta_desc.get('content'):
+                    content_text = meta_desc.get('content').strip()
+                else:
+                    # 嘗試 og:description
+                    og_desc = soup.find('meta', attrs={'property': 'og:description'})
+                    if og_desc and og_desc.get('content'):
+                        content_text = og_desc.get('content').strip()
+            except:
+                pass
         
         # 清理文本
-        content_text = re.sub(r'\s+', ' ', content_text)
-        content_text = re.sub(r'[^\w\s\u4e00-\u9fff，。！？；：「」『』（）]', '', content_text)
-        content_text = content_text.strip()
+        if content_text:
+            content_text = re.sub(r'\s+', ' ', content_text)
+            content_text = re.sub(r'[^\w\s\u4e00-\u9fff，。！？；：「」『』（）、]', '', content_text)
+            content_text = content_text.strip()
+            
+            # 截取指定字數
+            if len(content_text) > max_chars:
+                content_text = content_text[:max_chars] + "..."
+            
+            return content_text if content_text else "無法獲取摘要"
         
-        # 截取指定字數
-        if len(content_text) > max_chars:
-            content_text = content_text[:max_chars] + "..."
+        return "無法獲取摘要"
         
-        return content_text if content_text else "無法獲取摘要"
-        
+    except requests.exceptions.Timeout:
+        return "網站回應超時，無法獲取摘要"
+    except requests.exceptions.ConnectionError:
+        return "網路連線錯誤，無法獲取摘要"
     except Exception as e:
-        print(f"⚠️ 獲取摘要失敗 ({url[:50]}...): {e}")
+        print(f"⚠️ 獲取摘要失敗 ({url[:50] if url else 'unknown'}...): {e}")
         return "無法獲取摘要"
 
 def shorten_url(long_url):
@@ -199,27 +278,55 @@ def fetch_news():
 
 def send_message_by_category(news_by_category):
     max_length = 4000
-    no_news_categories = []
-
+    
+    # 收集所有有新聞的分類
+    categories_with_news = []
+    categories_without_news = []
+    
     for category, messages in news_by_category.items():
         if messages:
-            title = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞"
-            content = "\n\n".join(messages)  # 使用雙換行分隔每則新聞
-            full_message = f"{title}\n\n{content}"
-            
-            # 如果訊息太長，分段發送
-            for i in range(0, len(full_message), max_length):
-                part = full_message[i:i + max_length]
-                if i > 0:  # 第二段開始加上分段標示
-                    part = f"【{category}】續...\n\n{part}"
-                broadcast_message(part)
+            categories_with_news.append((category, messages))
         else:
-            no_news_categories.append(category)
-
-    if no_news_categories:
-        title = f"【{today} 業企部 今日無相關新聞分類整理】"
-        content = "\n".join(f"📂【{cat}】無相關新聞" for cat in no_news_categories)
-        broadcast_message(f"{title}\n\n{content}")
+            categories_without_news.append(category)
+    
+    # 構建完整訊息
+    full_message = ""
+    
+    # 先加入有新聞的分類
+    for category, messages in categories_with_news:
+        category_section = f"【{today} 業企部 今日【{category}】重點新聞整理】 共{len(messages)}則新聞\n\n"
+        category_content = "\n\n".join(messages)
+        category_section += category_content + "\n\n"
+        
+        # 檢查是否會超過長度限制
+        if len(full_message + category_section) > max_length:
+            # 如果會超過，就截斷並結束
+            remaining_space = max_length - len(full_message) - 50  # 保留空間給截斷提示
+            if remaining_space > 100:  # 如果還有足夠空間
+                truncated_section = category_section[:remaining_space] + "...\n\n📝 訊息已截斷，更多新聞請查看後續通知"
+                full_message += truncated_section
+            else:
+                full_message += "📝 更多新聞因字數限制已省略"
+            break
+        else:
+            full_message += category_section
+    
+    # 如果還有空間，加入無新聞的分類
+    if categories_without_news and len(full_message) < max_length - 200:
+        no_news_section = f"【{today} 業企部 今日無相關新聞分類整理】\n"
+        no_news_content = "\n".join(f"📂【{cat}】無相關新聞" for cat in categories_without_news)
+        no_news_section += no_news_content
+        
+        if len(full_message + no_news_section) <= max_length:
+            full_message += no_news_section
+    
+    # 發送單一訊息
+    if full_message.strip():
+        broadcast_message(full_message.strip())
+    else:
+        # 如果沒有任何內容，發送簡單訊息
+        simple_message = f"【{today} 業企部 今日新聞整理】\n暫無相關新聞"
+        broadcast_message(simple_message)
 
 def broadcast_message(message):
     url = 'https://api.line.me/v2/bot/message/broadcast'
