@@ -13,7 +13,7 @@ import re
 model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
 
 # ✅ 相似度門檻
-SIMILARITY_THRESHOLD = 0.95
+SIMILARITY_THRESHOLD = 0.8
 
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
