@@ -19,7 +19,7 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 CATEGORY_KEYWORDS = {
-    "台新新光金": ["新光金", "新光人壽", "新壽", "吳東進", "台新金", "台新人壽", "台新壽", "吳東亮"],
+    "台新新光金": ["台新新光金", "新光人壽", "新壽", "吳東進", "台新人壽", "台新壽", "吳東亮"],
     "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"],
     "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
     "其他": []
@@ -80,7 +80,7 @@ def is_similar(title, known_titles_vecs):
 def fetch_news():
     rss_urls = [
         # 合併 新光+台新 查詢
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進+OR+台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        "https://news.google.com/rss/search?q=台新新光金控+OR+新光人壽+OR+新壽+OR+吳東進+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+健康險+OR+意外險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     ]
