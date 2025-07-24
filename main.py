@@ -19,8 +19,7 @@ ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
 print("✅ Access Token 前 10 碼：", ACCESS_TOKEN[:10] if ACCESS_TOKEN else "未設定")
 
 CATEGORY_KEYWORDS = {
-    "新光金控": ["新光金", "新光人壽", "新壽", "吳東進"],
-    "台新金控": ["台新金", "台新人壽", "台新壽", "吳東亮"],
+    "台新新光金": ["新光金", "新光人壽", "新壽", "吳東進", "台新金", "台新人壽", "台新壽", "吳東亮"],
     "金控": ["金控", "金融控股", "中信金", "玉山金", "永豐金", "國泰金", "富邦金", "台灣金"],
     "保險": ["保險", "壽險", "健康險", "意外險", "人壽"],
     "其他": []
@@ -34,10 +33,10 @@ today = now.date()
 
 # ✅ 標題正規化
 def normalize_title(title):
-    title = re.sub(r'[｜|‧\-－–—~～].*$', '', title)  # 移除媒體後綴
-    title = re.sub(r'<[^>]+>', '', title)            # 移除 HTML 標籤
-    title = re.sub(r'[^\w\u4e00-\u9fff\s]', '', title)  # 移除非文字符號
-    title = re.sub(r'\s+', ' ', title)               # 多餘空白
+    title = re.sub(r'[｜|‧\-－–—~～].*$', '', title)
+    title = re.sub(r'<[^>]+>', '', title)
+    title = re.sub(r'[^\w\u4e00-\u9fff\s]', '', title)
+    title = re.sub(r'\s+', ' ', title)
     return title.strip().lower()
 
 def shorten_url(long_url):
@@ -80,9 +79,8 @@ def is_similar(title, known_titles_vecs):
 
 def fetch_news():
     rss_urls = [
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+台新金控+OR+台新人壽+OR+壽險+OR+金控+OR+人壽+OR+新壽+OR+台新壽+OR+吳東進+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
-        "https://news.google.com/rss/search?q=台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
+        # 合併 新光+台新 查詢
+        "https://news.google.com/rss/search?q=新光金控+OR+新光人壽+OR+新壽+OR+吳東進+OR+台新金控+OR+台新人壽+OR+台新壽+OR+吳東亮&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=壽險+OR+健康險+OR+意外險+OR+人壽&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
         "https://news.google.com/rss/search?q=金控+OR+金融控股&hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
     ]
@@ -181,3 +179,4 @@ if __name__ == "__main__":
         send_message_by_category(news)
     else:
         print("⚠️ 沒有符合條件的新聞，不發送。")
+
